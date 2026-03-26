@@ -89,10 +89,16 @@ agenda.define('run_campaign', { concurrency: 3 }, async (job) => {
           where: { id: account.id },
           data: { status: 'LIMITED' },
         })
-        accIdx++
+        const { notifyFloodWait } = await import('../src/lib/notifications.js')
+        await notifyFloodWait(account.phone, 'PeerFlood - переключаем аккаунт').catch(() => {})
+        accIdx++ // Smart rotation - move to next account
       }
       if (result.floodWait) {
-        await new Promise(r => setTimeout(r, result.floodWait * 1000))
+        const { notifyFloodWait } = await import('../src/lib/notifications.js')
+        await notifyFloodWait(account.phone, result.floodWait).catch(() => {})
+        // Smart rotation - switch account instead of waiting
+        accIdx++
+        // Continue with next account immediately
       }
     }
 
@@ -119,6 +125,8 @@ agenda.define('run_campaign', { concurrency: 3 }, async (job) => {
     campaignId, sent, total: recipients.length, failed, pct: 100,
   })
 
+  const { notifyCampaignDone } = await import('../src/lib/notifications.js')
+  await notifyCampaignDone(campaign.name, sent, 0).catch(() => {})
   logger.info({ campaignId, sent, failed }, 'Campaign done')
 })
 

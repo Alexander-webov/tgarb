@@ -2,6 +2,7 @@
 // src/components/layout/Layout.jsx
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useState, useEffect } from 'react'
 import {
   LayoutDashboard, Radio, Globe, Send, Zap, Bot,
   Link2, BarChart3, Calculator, Flame, Users, Settings
@@ -24,6 +25,7 @@ const NAV = [
   { label: 'Система', items: [
     { href: '/warmup',    icon: Flame,    label: 'Прогрев',   badge: null },
     { href: '/accounts',  icon: Users,    label: 'Аккаунты',  badge: null },
+    { href: '/spy',       icon: Telescope, label: 'Шпион',    badge: 'New', bc: 'green' },
     { href: '/settings',  icon: Settings, label: 'Настройки', badge: null },
   ]},
 ]
@@ -88,6 +90,18 @@ export function Sidebar() {
 }
 
 export function Topbar({ title, subtitle, actions }) {
+  const [unread, setUnread] = useState(0)
+
+  useEffect(() => {
+    const load = () => fetch('/api/notifications')
+      .then(r => r.json())
+      .then(n => setUnread(Array.isArray(n) ? n.filter(x => !x.isRead).length : 0))
+      .catch(() => {})
+    load()
+    const t = setInterval(load, 30000)
+    return () => clearInterval(t)
+  }, [])
+
   return (
     <header className="sticky top-0 z-40 flex items-center justify-between px-8 py-4
                         border-b border-border bg-bg/80 backdrop-blur-md">
@@ -95,7 +109,17 @@ export function Topbar({ title, subtitle, actions }) {
         <h1 className="text-lg font-black tracking-tight">{title}</h1>
         {subtitle && <p className="text-xs font-mono text-muted mt-0.5">{subtitle}</p>}
       </div>
-      <div className="flex items-center gap-3">{actions}</div>
+      <div className="flex items-center gap-3">
+        <a href="/settings" className="relative btn-ghost px-3 py-2">
+          <Bell size={16}/>
+          {unread > 0 && (
+            <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-danger text-white text-[10px] font-bold flex items-center justify-center">
+              {unread}
+            </span>
+          )}
+        </a>
+        {actions}
+      </div>
     </header>
   )
 }

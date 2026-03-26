@@ -116,6 +116,7 @@ export async function autoReplaceBanned(bannedAccountId) {
     message: `⚠️ ${banned?.phone} забанен → заменён на ${replacement.phone}`,
   })
 
+  try { const { notifyBan } = await import('../notifications.js'); await notifyBan(banned?.phone, replacement.phone) } catch {}
   logger.info({ bannedPhone: banned?.phone, replacement: replacement.phone, replaced }, 'Account replaced')
   return replacement
 }
@@ -206,6 +207,9 @@ export async function smartWarmupStep(accountId) {
       })
     }
 
+    if (newStatus === 'ACTIVE' && !acc.isWarmed) {
+      try { const { notifyWarmupDone } = await import('../notifications.js'); await notifyWarmupDone(acc.phone) } catch {}
+    }
     logger.info({ phone: acc.phone, day: newDay, actions, status: newStatus }, 'Warmup step done')
     return { actions, day: newDay, status: newStatus }
 

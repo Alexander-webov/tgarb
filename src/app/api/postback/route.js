@@ -9,5 +9,9 @@ export async function GET(req) {
   const payout    = searchParams.get('payout') || '0'
 
   const ok = await handlePostback(subId, eventType, payout)
+  if (ok && eventType !== 'click') {
+    const { notifyConversion } = await import('@/lib/notifications')
+    await notifyConversion(subId, payout).catch(() => {})
+  }
   return NextResponse.json({ status: ok ? 'ok' : 'not_found' })
 }

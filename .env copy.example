@@ -3,11 +3,11 @@
 # ═══════════════════════════════════════
 
 # Telegram API (my.telegram.org)
-TG_API_ID=12345678
-TG_API_HASH=abcdef1234567890abcdef1234567890
+TG_API_ID=39672062
+TG_API_HASH=6a519b077bd8d84c727aa6130c882a4e
 
 # Telegram Bot (@BotFather)
-BOT_TOKEN=1234567890:AABBCCDDEEFFaabbccddeeff
+BOT_TOKEN=8712633494:AAHPtiPDycV2ugdbYeM7Cc-ALdUrc2uNZGI
 
 # База данных (не менять если используешь Docker)
 # Supabase — вставь свой пароль вместо YOUR-PASSWORD

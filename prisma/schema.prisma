@@ -86,6 +86,7 @@ model Channel {
   posts        Post[]
   parsedUsers  ParsedUser[]
   keywords     ChannelKeyword[]
+  adPosts      AdPost[]
 
   @@map("channels")
 }
@@ -285,4 +286,55 @@ model FunnelSession {
 
   @@unique([funnelId, userId])
   @@map("funnel_sessions")
+}
+
+// ── Auth ──────────────────────────────────────────────────
+model AdminUser {
+  id           Int      @id @default(autoincrement())
+  username     String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+
+  @@map("admin_users")
+}
+
+// ── Session generation ────────────────────────────────────
+model SessionRequest {
+  id        Int      @id @default(autoincrement())
+  phone     String
+  status    String   @default("pending") // pending | code_sent | done | failed
+  sessionData String?
+  createdAt DateTime @default(now())
+
+  @@map("session_requests")
+}
+
+// ── Spy ───────────────────────────────────────────────────
+model AdPost {
+  id          Int      @id @default(autoincrement())
+  channelId   Int
+  channel     Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  tgMsgId     Int
+  text        String?
+  mediaUrl    String?
+  offerUrl    String?
+  advertiser  String?
+  views       Int?
+  detectedAt  DateTime @default(now())
+
+  @@unique([channelId, tgMsgId])
+  @@map("ad_posts")
+}
+
+// ── Notifications ─────────────────────────────────────────
+model Notification {
+  id        Int      @id @default(autoincrement())
+  type      String   // conversion | ban | campaign_done | flood_wait
+  message   String
+  data      Json?
+  isRead    Boolean  @default(false)
+  sentToTg  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@map("notifications")
 }

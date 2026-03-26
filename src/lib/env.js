@@ -10,4 +10,5 @@ export const env = {
   ADMITAD_PUBLISHER_ID:process.env.ADMITAD_PUBLISHER_ID|| '',
   LEADGID_API_KEY:     process.env.LEADGID_API_KEY     || '',
   ALFALEADS_API_KEY:   process.env.ALFALEADS_API_KEY   || '',
+  ADMIN_CHAT_ID:       process.env.ADMIN_CHAT_ID       || '',
 }
