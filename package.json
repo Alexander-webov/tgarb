@@ -19,7 +19,7 @@
     "react-dom": "18.3.1",
     "@prisma/client": "5.17.0",
     "prisma": "5.17.0",
-    "telegram": "2.26.0",
+    "telegram": "2.26.22",
     "input": "1.0.1",
     "grammy": "1.29.0",
     "axios": "1.7.3",
