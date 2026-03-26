@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 // src/app/api/analytics/dashboard/route.js
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'

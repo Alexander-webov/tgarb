@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 // src/app/api/warmup/niche-channels/route.js
 import { NextResponse } from 'next/server'
 import { NICHE_CHANNELS } from '@/lib/telegram/warmup'

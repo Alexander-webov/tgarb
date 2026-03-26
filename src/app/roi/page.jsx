@@ -1,7 +1,7 @@
 'use client'
 // src/app/roi/page.jsx
 import { useState, useEffect } from 'react'
-import { BarChart, Bar, AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
+import { BarChart, Bar, AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, Cell } from 'recharts'
 import { Layout, Topbar } from '@/components/layout/Layout'
 import { StatCard } from '@/components/ui'
 import { Target, Zap, TrendingUp, DollarSign } from 'lucide-react'

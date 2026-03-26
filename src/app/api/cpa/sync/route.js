@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 // src/app/api/cpa/sync/route.js
 import { NextResponse } from 'next/server'
 import { admitadService, leadgidService, alfaleadsService } from '@/lib/cpa'

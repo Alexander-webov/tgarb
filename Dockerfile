@@ -1,5 +1,8 @@
 FROM node:20-alpine
 
+# Install OpenSSL - required by Prisma
+RUN apk add --no-cache openssl openssl-dev
+
 WORKDIR /app
 
 # Install dependencies
@@ -17,5 +20,4 @@ RUN npm run build
 
 EXPOSE 3000
 
-# Push DB schema and start server
 CMD ["sh", "-c", "npx prisma db push --skip-generate && node server.js"]

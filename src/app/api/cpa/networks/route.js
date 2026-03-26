@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 // src/app/api/cpa/networks/route.js
 import { NextResponse } from 'next/server'
 import { env } from '@/lib/env'

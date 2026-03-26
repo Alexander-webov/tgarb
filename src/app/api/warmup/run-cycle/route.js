@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 // src/app/api/warmup/run-cycle/route.js
 import { NextResponse } from 'next/server'
 import { scheduleNow } from '@/lib/agenda'

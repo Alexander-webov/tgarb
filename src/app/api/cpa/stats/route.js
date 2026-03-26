@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 // src/app/api/cpa/stats/route.js
 import { NextResponse } from 'next/server'
 import { getAllNetworkStats } from '@/lib/cpa'

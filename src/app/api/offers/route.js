@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 // ── OFFERS ────────────────────────────────────────────────
 // src/app/api/offers/route.js
 import { NextResponse } from 'next/server'
