@@ -1,0 +1,61 @@
+/* src/app/globals.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@layer base {
+  * { box-sizing: border-box; }
+  body {
+    background: #080a10;
+    color: #e8eaf0;
+    font-family: 'Syne', sans-serif;
+    overflow-x: hidden;
+  }
+  body::before {
+    content: '';
+    position: fixed; inset: 0; z-index: 0;
+    background-image:
+      linear-gradient(rgba(0,229,255,.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,229,255,.025) 1px, transparent 1px);
+    background-size: 48px 48px;
+    pointer-events: none;
+  }
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #252836; border-radius: 2px; }
+}
+
+@layer components {
+  .card { @apply bg-surface border border-border rounded-xl overflow-hidden; }
+  .stat-card { @apply card p-5 relative overflow-hidden hover:border-accent/30 transition-colors; }
+  .btn-primary {
+    @apply bg-accent text-black font-bold text-sm px-4 py-2 rounded-lg
+           hover:brightness-110 active:scale-95 transition-all inline-flex items-center gap-2;
+  }
+  .btn-ghost {
+    @apply bg-surface2 text-[#e8eaf0] border border-border text-sm px-4 py-2 rounded-lg
+           hover:border-accent hover:text-accent transition-all inline-flex items-center gap-2;
+  }
+  .input {
+    @apply w-full bg-surface2 border border-border rounded-lg px-3 py-2 text-sm
+           text-[#e8eaf0] outline-none focus:border-accent transition-colors;
+  }
+  .badge-green  { @apply inline-flex px-2 py-0.5 rounded text-xs font-mono font-semibold bg-success/10 text-success border border-success/20; }
+  .badge-red    { @apply inline-flex px-2 py-0.5 rounded text-xs font-mono font-semibold bg-danger/10 text-danger border border-danger/20; }
+  .badge-blue   { @apply inline-flex px-2 py-0.5 rounded text-xs font-mono font-semibold bg-accent/10 text-accent border border-accent/20; }
+  .badge-yellow { @apply inline-flex px-2 py-0.5 rounded text-xs font-mono font-semibold bg-warning/10 text-warning border border-warning/20; }
+  .badge-purple { @apply inline-flex px-2 py-0.5 rounded text-xs font-mono font-semibold bg-accent3/10 text-purple-400 border border-accent3/20; }
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes pulseDot {
+  0%,100% { box-shadow: 0 0 0 0 rgba(0,255,157,.4); }
+  50%      { box-shadow: 0 0 0 6px rgba(0,255,157,0); }
+}
+.animate-fade-up { animation: fadeUp .3s ease both; }
+.pulse-dot { animation: pulseDot 2s infinite; }

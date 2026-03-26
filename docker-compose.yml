@@ -1,0 +1,96 @@
+version: '3.9'
+
+services:
+  # ── PostgreSQL ─────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       tgarb
+      POSTGRES_USER:     tgarb
+      POSTGRES_PASSWORD: secret
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U tgarb']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── MongoDB (Agenda jobs) ─────────────────────────────
+  mongo:
+    image: mongo:7-jammy
+    restart: unless-stopped
+    volumes:
+      - mongodata:/data/db
+    healthcheck:
+      test: ['CMD', 'mongosh', '--eval', 'db.adminCommand("ping")']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis (sessions / cache) ──────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redisdata:/data
+
+  # ── Next.js app ───────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    environment:
+      DATABASE_URL:  postgresql://tgarb:secret@db:5432/tgarb
+      MONGODB_URL:   mongodb://mongo:27017/tgarb_jobs
+      REDIS_URL:     redis://redis:6379
+      TG_API_ID:     ${TG_API_ID}
+      TG_API_HASH:   ${TG_API_HASH}
+      BOT_TOKEN:     ${BOT_TOKEN}
+      TRACKER_BASE_URL: ${TRACKER_BASE_URL:-http://localhost:3000/r}
+      ADMITAD_TOKEN:     ${ADMITAD_TOKEN:-}
+      ADMITAD_PUBLISHER_ID: ${ADMITAD_PUBLISHER_ID:-}
+      LEADGID_API_KEY:   ${LEADGID_API_KEY:-}
+      ALFALEADS_API_KEY: ${ALFALEADS_API_KEY:-}
+    depends_on:
+      db:    { condition: service_healthy }
+      mongo: { condition: service_healthy }
+      redis: { condition: service_started }
+    command: sh -c "npx prisma db push --skip-generate && node server.js"
+
+  # ── Agenda worker ─────────────────────────────────────
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://tgarb:secret@db:5432/tgarb
+      MONGODB_URL:  mongodb://mongo:27017/tgarb_jobs
+      REDIS_URL:    redis://redis:6379
+      TG_API_ID:    ${TG_API_ID}
+      TG_API_HASH:  ${TG_API_HASH}
+    depends_on:
+      db:    { condition: service_healthy }
+      mongo: { condition: service_healthy }
+
+  # ── Telegram bot ──────────────────────────────────────
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile.bot
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://tgarb:secret@db:5432/tgarb
+      BOT_TOKEN:    ${BOT_TOKEN}
+    depends_on:
+      db: { condition: service_healthy }
+
+volumes:
+  pgdata:
+  mongodata:
+  redisdata:

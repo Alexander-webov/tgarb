@@ -1,0 +1,287 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Telegram Accounts ─────────────────────────────────────
+model TgAccount {
+  id           Int      @id @default(autoincrement())
+  phone        String   @unique
+  username     String?
+  firstName    String?
+  sessionData  String?  // Serialized gram.js session
+  proxyId      Int?
+  proxy        Proxy?   @relation(fields: [proxyId], references: [id])
+
+  status       AccountStatus @default(OFFLINE)
+  isWarmed     Boolean @default(false)
+  warmupDays   Int     @default(0)
+  dailyLimit   Int     @default(50)
+  sentToday    Int     @default(0)
+  delayMin     Int     @default(20)
+  delayMax     Int     @default(60)
+  niche        String  @default("general")
+
+  lastActive   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  sentMessages SentMessage[]
+  campaigns    CampaignAccount[]
+
+  @@map("tg_accounts")
+}
+
+enum AccountStatus {
+  ACTIVE
+  WARMING
+  LIMITED
+  BANNED
+  OFFLINE
+}
+
+// ── Proxies ───────────────────────────────────────────────
+model Proxy {
+  id        Int     @id @default(autoincrement())
+  host      String
+  port      Int
+  proxyType String  @default("socks5")
+  username  String?
+  password  String?
+  country   String?
+  pingMs    Int?
+  isActive  Boolean @default(true)
+  createdAt DateTime @default(now())
+
+  accounts  TgAccount[]
+
+  @@map("proxies")
+}
+
+// ── Channels ──────────────────────────────────────────────
+model Channel {
+  id           Int     @id @default(autoincrement())
+  username     String  @unique
+  title        String?
+  tgId         BigInt?
+  category     String?
+  description  String?
+  subscribers  Int?
+  avgViews     Int?
+  erPercent    Float?
+  postsPerDay  Float?
+  botPercent   Float?
+  adRatio      Float?
+  isMonitored  Boolean @default(true)
+  isParsing    Boolean @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  posts        Post[]
+  parsedUsers  ParsedUser[]
+  keywords     ChannelKeyword[]
+
+  @@map("channels")
+}
+
+model ChannelKeyword {
+  id        Int     @id @default(autoincrement())
+  keyword   String
+  isGlobal  Boolean @default(true)
+  channelId Int?
+  channel   Channel? @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@map("channel_keywords")
+}
+
+model Post {
+  id              Int      @id @default(autoincrement())
+  channelId       Int
+  channel         Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  tgMsgId         Int
+  text            String?
+  views           Int?
+  reactions       Int?
+  forwards        Int?
+  isAd            Boolean  @default(false)
+  matchedKeywords String[] @default([])
+  postedAt        DateTime?
+  parsedAt        DateTime @default(now())
+
+  @@unique([channelId, tgMsgId])
+  @@map("posts")
+}
+
+model ParsedUser {
+  id         Int      @id @default(autoincrement())
+  channelId  Int
+  channel    Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  tgUserId   BigInt
+  username   String?
+  firstName  String?
+  lastName   String?
+  phone      String?
+  isBot      Boolean  @default(false)
+  parsedAt   DateTime @default(now())
+
+  @@unique([channelId, tgUserId])
+  @@map("parsed_users")
+}
+
+// ── Campaigns ─────────────────────────────────────────────
+model Campaign {
+  id               Int            @id @default(autoincrement())
+  name             String
+  campaignType     CampaignType   @default(DM)
+  messageText      String
+  mediaUrl         String?
+  targetChannels   String[]       @default([])
+  maxRecipients    Int?
+  delayBetween     Int            @default(30)
+  offerUrl         String?
+  status           CampaignStatus @default(DRAFT)
+  sentCount        Int            @default(0)
+  deliveredCount   Int            @default(0)
+  failedCount      Int            @default(0)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  accounts         CampaignAccount[]
+  sentMessages     SentMessage[]
+
+  @@map("campaigns")
+}
+
+model CampaignAccount {
+  campaignId Int
+  accountId  Int
+  campaign   Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  account    TgAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@id([campaignId, accountId])
+  @@map("campaign_accounts")
+}
+
+enum CampaignType {
+  DM
+  COMMENT
+  INVITE
+  POST
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  RUNNING
+  PAUSED
+  DONE
+  FAILED
+}
+
+model SentMessage {
+  id          Int       @id @default(autoincrement())
+  campaignId  Int
+  campaign    Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  accountId   Int
+  account     TgAccount @relation(fields: [accountId], references: [id])
+  recipientId BigInt
+  isDelivered Boolean   @default(false)
+  error       String?
+  sentAt      DateTime  @default(now())
+
+  @@map("sent_messages")
+}
+
+// ── Offers ────────────────────────────────────────────────
+model Offer {
+  id             Int     @id @default(autoincrement())
+  name           String
+  description    String?
+  category       String?
+  network        String  @default("own")
+  externalId     String?
+  destinationUrl String
+  previewUrl     String?
+  payout         Float?
+  currency       String  @default("USD")
+  payoutType     String  @default("CPA")
+  clicks         Int     @default(0)
+  leads          Int     @default(0)
+  revenue        Float   @default(0)
+  isActive       Boolean @default(true)
+  geo            String[] @default([])
+  tags           String[] @default([])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  trackLinks     TrackLink[]
+
+  @@map("offers")
+}
+
+// ── Tracker ───────────────────────────────────────────────
+model TrackLink {
+  id             Int      @id @default(autoincrement())
+  slug           String   @unique
+  destinationUrl String
+  offerId        Int?
+  offer          Offer?   @relation(fields: [offerId], references: [id])
+  campaignId     Int?
+  channelUsername String?
+  clicks         Int      @default(0)
+  createdAt      DateTime @default(now())
+
+  conversions    Conversion[]
+
+  @@map("track_links")
+}
+
+model Conversion {
+  id        Int      @id @default(autoincrement())
+  linkId    Int
+  link      TrackLink @relation(fields: [linkId], references: [id])
+  eventType String   @default("click")
+  payout    Float?
+  ip        String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@map("conversions")
+}
+
+// ── Funnels ───────────────────────────────────────────────
+model Funnel {
+  id          Int      @id @default(autoincrement())
+  name        String
+  offerUrl    String?
+  steps       Json     @default("[]")
+  isActive    Boolean  @default(true)
+  totalStarts Int      @default(0)
+  totalDone   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  sessions    FunnelSession[]
+
+  @@map("funnels")
+}
+
+model FunnelSession {
+  id        Int      @id @default(autoincrement())
+  funnelId  Int
+  funnel    Funnel   @relation(fields: [funnelId], references: [id], onDelete: Cascade)
+  userId    BigInt
+  step      Int      @default(0)
+  data      Json     @default("{}")
+  isDone    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([funnelId, userId])
+  @@map("funnel_sessions")
+}
