@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import {
   LayoutDashboard, Radio, Globe, Send, Zap, Bot,
-  Link2, BarChart3, Calculator, Flame, Users, Settings
+  Link2, BarChart3, Calculator, Flame, Users, Settings, Search, Bell
 } from 'lucide-react'
 
 const NAV = [
