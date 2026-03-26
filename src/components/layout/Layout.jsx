@@ -25,7 +25,7 @@ const NAV = [
   { label: 'Система', items: [
     { href: '/warmup',    icon: Flame,    label: 'Прогрев',   badge: null },
     { href: '/accounts',  icon: Users,    label: 'Аккаунты',  badge: null },
-    { href: '/spy',       icon: Telescope, label: 'Шпион',    badge: 'New', bc: 'green' },
+    { href: '/spy',       icon: Search, label: 'Шпион',    badge: 'New', bc: 'green' },
     { href: '/settings',  icon: Settings, label: 'Настройки', badge: null },
   ]},
 ]
