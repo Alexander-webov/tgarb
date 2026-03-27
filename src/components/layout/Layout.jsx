@@ -1,11 +1,11 @@
 'use client'
 // src/components/layout/Layout.jsx
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import {
   LayoutDashboard, Radio, Globe, Send, Zap, Bot,
-  Link2, BarChart3, Calculator, Flame, Users, Settings, Search, Bell, Shield
+  Link2, BarChart3, Calculator, Flame, Users, Settings, Search, Bell, Shield, LogOut
 } from 'lucide-react'
 
 const NAV = [
@@ -92,8 +92,11 @@ export function Sidebar() {
 
 export function Topbar({ title, subtitle, actions }) {
   const [unread, setUnread] = useState(0)
+  const [user,   setUser]   = useState(null)
+  const router = useRouter()
 
   useEffect(() => {
+    fetch('/api/auth/me').then(r=>r.json()).then(d => setUser(d.user)).catch(()=>{})
     const load = () => fetch('/api/notifications')
       .then(r => r.json())
       .then(n => setUnread(Array.isArray(n) ? n.filter(x => !x.isRead).length : 0))
@@ -102,6 +105,12 @@ export function Topbar({ title, subtitle, actions }) {
     const t = setInterval(load, 30000)
     return () => clearInterval(t)
   }, [])
+
+  const handleLogout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' })
+    router.push('/login')
+    router.refresh()
+  }
 
   return (
     <header className="sticky top-0 z-40 flex items-center justify-between px-8 py-4
@@ -120,6 +129,20 @@ export function Topbar({ title, subtitle, actions }) {
           )}
         </a>
         {actions}
+        {user && (
+          <div className="flex items-center gap-2 pl-3 border-l border-border">
+            <div className="w-7 h-7 rounded-full bg-accent/10 text-accent flex items-center justify-center text-xs font-black">
+              {user.username[0].toUpperCase()}
+            </div>
+            <div className="text-xs">
+              <div className="font-bold text-[#e8eaf0]">{user.username}</div>
+              <div className="font-mono text-muted">{user.role}</div>
+            </div>
+            <button onClick={handleLogout} className="ml-1 text-muted hover:text-danger transition-colors" title="Выйти">
+              <LogOut size={15}/>
+            </button>
+          </div>
+        )}
       </div>
     </header>
   )

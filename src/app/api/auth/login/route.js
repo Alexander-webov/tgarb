@@ -11,7 +11,10 @@ export async function POST(req) {
     const token = createToken()
     storeToken(token, user.id)
 
-    const res = NextResponse.json({ ok: true, user: { id: user.id, username: user.username, role: user.role } })
+    const res = NextResponse.json({
+      ok: true,
+      user: { id: user.id, username: user.username, role: user.role }
+    })
     res.cookies.set('tgarb_session', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
@@ -19,10 +22,15 @@ export async function POST(req) {
       path: '/',
       sameSite: 'lax',
     })
+    // Clear pending status
+    res.cookies.delete('tgarb_status')
     return res
   } catch (err) {
     if (err.message === 'PENDING') {
-      return NextResponse.json({ error: 'PENDING', message: 'Ожидайте одобрения администратора' }, { status: 403 })
+      return NextResponse.json({
+        error: 'PENDING',
+        message: 'Ваша заявка ожидает одобрения администратора'
+      }, { status: 403 })
     }
     return NextResponse.json({ error: err.message }, { status: 401 })
   }
