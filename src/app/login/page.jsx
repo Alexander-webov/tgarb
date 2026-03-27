@@ -26,18 +26,41 @@ export default function Login() {
     if (!form.email || !form.password) { setError('Заполни все поля'); return }
     setLoading(true); setError('')
     const supabase = await getSupabase()
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email: form.email, password: form.password
     })
-    setLoading(false)
     if (error) {
+      setLoading(false)
       if (error.message.includes('Invalid login')) setError('Неверный email или пароль')
       else if (error.message.includes('Email not confirmed')) setError('Подтверди email — проверь почту')
       else setError(error.message)
-    } else {
-      router.push('/dashboard')
-      router.refresh()
+      return
     }
+
+    // Check approval BEFORE redirecting
+    try {
+      const res = await fetch('/api/auth/me', {
+        headers: { 'Authorization': `Bearer ${data.session.access_token}` }
+      })
+      const { user } = await res.json()
+
+      if (!user || !user.isApproved || user.role === 'PENDING') {
+        // Sign out immediately - don't let them in
+        await supabase.auth.signOut()
+        setLoading(false)
+        setError('⏳ Ваша заявка ожидает одобрения администратора.')
+        return
+      }
+    } catch {
+      await supabase.auth.signOut()
+      setLoading(false)
+      setError('Ошибка проверки доступа. Попробуй ещё раз.')
+      return
+    }
+
+    setLoading(false)
+    router.push('/dashboard')
+    router.refresh()
   }
 
   const handleRegister = async () => {
