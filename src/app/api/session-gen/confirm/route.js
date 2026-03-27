@@ -4,74 +4,90 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { env } from '@/lib/env'
 
-// Shared in-memory store (same process as start route in Next.js)
-// In production use Redis for this
-const authSessions = globalThis._authSessions || (globalThis._authSessions = new Map())
+const store = globalThis._tgAuthSessions || (globalThis._tgAuthSessions = new Map())
 
 export async function POST(req) {
   const { phone, code, password } = await req.json()
-  if (!phone || !code) return NextResponse.json({ error: 'Нужен телефон и код' }, { status: 400 })
-
-  const stored = authSessions.get(phone)
-  if (!stored) {
-    return NextResponse.json({ error: 'Сессия не найдена. Запроси код заново.' }, { status: 400 })
+  if (!phone || !code) {
+    return NextResponse.json({ error: 'Нужен телефон и код' }, { status: 400 })
   }
+
+  const stored = store.get(phone)
+  if (!stored) {
+    return NextResponse.json({
+      error: 'Сессия не найдена — запроси код заново. Возможно сервер перезапустился.'
+    }, { status: 400 })
+  }
+
+  const { client, session, phoneCodeHash } = stored
 
   try {
-    const { client, session } = stored
-
-    await client.signIn(
-      { apiId: env.TG_API_ID, apiHash: env.TG_API_HASH },
-      {
+    await client.invoke(
+      new (await import('telegram/tl/functions/auth/index.js')).SignIn({
         phoneNumber: phone,
-        phoneCode: async () => code,
-        password: password ? async () => password : undefined,
-        onError: (err) => { throw err },
-      }
+        phoneCodeHash,
+        phoneCode: code,
+      })
     )
-
-    const sessionString = session.save()
-    const me = await client.getMe()
-
-    // Save session to account in DB or create new
-    const existingAcc = await prisma.tgAccount.findUnique({ where: { phone } })
-    if (existingAcc) {
-      await prisma.tgAccount.update({
-        where: { phone },
-        data: {
-          sessionData: sessionString,
-          username: me.username || null,
-          firstName: me.firstName || null,
-          status: 'OFFLINE',
-        },
-      })
-    } else {
-      await prisma.tgAccount.create({
-        data: {
-          phone,
-          sessionData: sessionString,
-          username: me.username || null,
-          firstName: me.firstName || null,
-          status: 'OFFLINE',
-          dailyLimit: 50,
-          warmupDays: 0,
-          niche: 'general',
-        },
-      })
-    }
-
-    authSessions.delete(phone)
-
-    return NextResponse.json({
-      ok: true,
-      sessionString,
-      username: me.username,
-      message: `Аккаунт @${me.username || phone} успешно добавлен!`,
-    })
   } catch (err) {
-    if (err.message?.includes('SESSION_PASSWORD_NEEDED') || err.errorMessage === 'SESSION_PASSWORD_NEEDED') {
-      return NextResponse.json({ needPassword: true, message: '2FA включён — введи пароль' })
+    // 2FA needed
+    if (err.errorMessage === 'SESSION_PASSWORD_NEEDED') {
+      if (!password) {
+        return NextResponse.json({ needPassword: true, message: '2FA включён — введи пароль' })
+      }
+      try {
+        const { computeCheck } = await import('telegram/Password.js')
+        const pwd = await client.invoke(
+          new (await import('telegram/tl/functions/account/index.js')).GetPassword()
+        )
+        await client.invoke(
+          new (await import('telegram/tl/functions/auth/index.js')).CheckPassword({
+            password: await computeCheck(pwd, password),
+          })
+        )
+      } catch (e2) {
+        return NextResponse.json({ error: `Ошибка 2FA: ${e2.message}` }, { status: 400 })
+      }
+    } else {
+      return NextResponse.json({ error: err.message }, { status: 400 })
     }
-    return NextResponse.json({ error: `Ошибка: ${err.message}` }, { status: 500 })
   }
+
+  const sessionString = session.save()
+  const me = await client.getMe()
+
+  // Save to DB
+  const existing = await prisma.tgAccount.findUnique({ where: { phone } })
+  if (existing) {
+    await prisma.tgAccount.update({
+      where: { phone },
+      data: {
+        sessionData: sessionString,
+        username: me.username || null,
+        firstName: me.firstName || null,
+        status: 'OFFLINE',
+      },
+    })
+  } else {
+    await prisma.tgAccount.create({
+      data: {
+        phone,
+        sessionData: sessionString,
+        username: me.username || null,
+        firstName: me.firstName || null,
+        status: 'OFFLINE',
+        dailyLimit: 50,
+        warmupDays: 0,
+        niche: 'general',
+      },
+    })
+  }
+
+  store.delete(phone)
+
+  return NextResponse.json({
+    ok: true,
+    username: me.username,
+    message: `Аккаунт ${me.username ? '@' + me.username : phone} успешно добавлен!`,
+  })
 }
