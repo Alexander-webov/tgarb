@@ -1,19 +1,11 @@
-// src/app/page.jsx
-// This is the PUBLIC landing page - shown to non-logged users
-// Logged users are redirected to /dashboard
-import { redirect } from 'next/navigation'
-import { cookies } from 'next/headers'
+'use client'
+import { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
 export default function LandingPage() {
-  // If logged in - redirect to dashboard
-  const cookieStore = cookies()
-  const session = cookieStore.get('tgarb_session')?.value
-  if (session) redirect('/dashboard')
-
   return (
     <div className="min-h-screen bg-bg flex flex-col">
-      {/* Nav */}
       <nav className="flex items-center justify-between px-8 py-5 border-b border-border">
         <div className="text-2xl font-black tracking-tighter bg-gradient-to-r from-accent to-accent3 bg-clip-text text-transparent">
           TGArb
@@ -24,10 +16,9 @@ export default function LandingPage() {
         </div>
       </nav>
 
-      {/* Hero */}
       <div className="flex-1 flex flex-col items-center justify-center text-center px-4 py-20">
         <div className="inline-flex items-center gap-2 bg-accent/10 border border-accent/20 rounded-full px-4 py-1.5 text-xs font-mono text-accent mb-8">
-          <span className="w-1.5 h-1.5 rounded-full bg-accent pulse-dot inline-block"/>
+          <span className="w-1.5 h-1.5 rounded-full bg-accent inline-block"/>
           Платформа для Telegram арбитража
         </div>
 
@@ -45,14 +36,13 @@ export default function LandingPage() {
 
         <div className="flex gap-4 mb-16">
           <Link href="/login" className="btn-primary text-base px-8 py-3">
-            Зарегистрироваться бесплатно →
+            Зарегистрироваться →
           </Link>
           <Link href="/login" className="btn-ghost text-base px-8 py-3">
             Войти
           </Link>
         </div>
 
-        {/* Features */}
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4 max-w-3xl w-full">
           {[
             { icon:'📡', title:'Парсинг каналов',   desc:'Собирай аудиторию из любых Telegram каналов' },
