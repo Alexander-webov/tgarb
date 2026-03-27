@@ -7,3 +7,6 @@ out/
 *.pem
 .env
 .env copy.example
+".env" 
+".env.local" 
+.env.example
