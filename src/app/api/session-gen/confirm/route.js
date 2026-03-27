@@ -15,42 +15,42 @@ export async function POST(req) {
   const stored = store.get(phone)
   if (!stored) {
     return NextResponse.json({
-      error: 'Сессия не найдена — запроси код заново. Возможно сервер перезапустился.'
+      error: 'Сессия истекла — запроси код заново'
     }, { status: 400 })
   }
 
-  const { client, session, phoneCodeHash } = stored
+  const { client, session } = stored
 
   try {
-    await client.invoke(
-      new (await import('telegram/tl/functions/auth/index.js')).SignIn({
-        phoneNumber: phone,
-        phoneCodeHash,
-        phoneCode: code,
-      })
+    // Use gramjs high-level signInUser helper
+    await client.signInUser(
+      { apiId: env.TG_API_ID, apiHash: env.TG_API_HASH },
+      {
+        phoneNumber: async () => phone,
+        phoneCode: async () => code,
+        password: password ? async () => password : undefined,
+        onError: (err) => { throw err },
+      }
     )
   } catch (err) {
-    // 2FA needed
-    if (err.errorMessage === 'SESSION_PASSWORD_NEEDED') {
-      if (!password) {
-        return NextResponse.json({ needPassword: true, message: '2FA включён — введи пароль' })
-      }
-      try {
-        const { computeCheck } = await import('telegram/Password.js')
-        const pwd = await client.invoke(
-          new (await import('telegram/tl/functions/account/index.js')).GetPassword()
-        )
-        await client.invoke(
-          new (await import('telegram/tl/functions/auth/index.js')).CheckPassword({
-            password: await computeCheck(pwd, password),
-          })
-        )
-      } catch (e2) {
-        return NextResponse.json({ error: `Ошибка 2FA: ${e2.message}` }, { status: 400 })
-      }
-    } else {
-      return NextResponse.json({ error: err.message }, { status: 400 })
+    if (err.message?.includes('SESSION_PASSWORD_NEEDED') ||
+        err.errorMessage === 'SESSION_PASSWORD_NEEDED') {
+      return NextResponse.json({
+        needPassword: true,
+        message: '2FA включён — введи пароль облачного хранилища Telegram'
+      })
     }
+    if (err.message?.includes('PHONE_CODE_INVALID') ||
+        err.errorMessage === 'PHONE_CODE_INVALID') {
+      return NextResponse.json({ error: 'Неверный код — попробуй ещё раз' }, { status: 400 })
+    }
+    if (err.message?.includes('PHONE_CODE_EXPIRED') ||
+        err.errorMessage === 'PHONE_CODE_EXPIRED') {
+      store.delete(phone)
+      return NextResponse.json({ error: 'Код истёк — запроси новый' }, { status: 400 })
+    }
+    console.error('session-gen/confirm error:', err.message)
+    return NextResponse.json({ error: err.message }, { status: 400 })
   }
 
   const sessionString = session.save()
