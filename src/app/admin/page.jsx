@@ -19,9 +19,13 @@ export default function AdminPage() {
 
   const load = async () => {
     setLoading(true)
+    const { createClient } = await import('@/lib/supabase/client')
+    const { data: { session } } = await createClient().auth.getSession()
+    const token = session?.access_token || ''
+    const headers = { 'Authorization': `Bearer ${token}` }
     const [u, m] = await Promise.all([
-      fetch('/api/users').then(r => r.json()).catch(() => []),
-      fetch('/api/auth/me').then(r => r.json()).catch(() => ({})),
+      fetch('/api/users', { headers }).then(r => r.json()).catch(() => []),
+      fetch('/api/auth/me', { headers }).then(r => r.json()).catch(() => ({})),
     ])
     setUsers(Array.isArray(u) ? u : [])
     setMe(m.user)
@@ -30,13 +34,22 @@ export default function AdminPage() {
   useEffect(() => { load() }, [])
 
   const handle = async (userId, action) => {
-    const res = await fetch('/api/users/approve', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, action }),
-    })
-    if (res.ok) { toast.success('Готово'); load() }
-    else toast.error('Ошибка')
+    try {
+      const { createClient } = await import('@/lib/supabase/client')
+      const { data: { session } } = await createClient().auth.getSession()
+      const res = await fetch('/api/users/approve', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token || ''}`,
+        },
+        body: JSON.stringify({ userId, action }),
+      })
+      if (res.ok) { toast.success('Готово'); load() }
+      else toast.error('Ошибка ' + res.status)
+    } catch (e) {
+      toast.error('Ошибка: ' + e.message)
+    }
   }
 
   if (me && me.role !== 'ADMIN') return (
