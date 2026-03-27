@@ -1,46 +1,29 @@
-// src/app/api/auth/login/route.js
 export const dynamic = 'force-dynamic'
 import { NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
-import { createHash, randomBytes } from 'crypto'
-
-function hashPassword(password) {
-  return createHash('sha256')
-    .update(password + (process.env.AUTH_SECRET || 'tgarb-secret-2024'))
-    .digest('hex')
-}
+import { loginUser, createToken, storeToken } from '@/lib/auth'
 
 export async function POST(req) {
-  const { username, password } = await req.json()
-  if (!username || !password) {
-    return NextResponse.json({ error: 'Введи логин и пароль' }, { status: 400 })
-  }
+  const { login, password } = await req.json()
+  if (!login || !password) return NextResponse.json({ error: 'Заполни все поля' }, { status: 400 })
 
-  // Check if any admin exists
-  const adminCount = await prisma.adminUser.count()
+  try {
+    const user = await loginUser(login, password)
+    const token = createToken()
+    storeToken(token, user.id)
 
-  if (adminCount === 0) {
-    // First time — create admin
-    await prisma.adminUser.create({
-      data: { username, passwordHash: hashPassword(password) }
+    const res = NextResponse.json({ ok: true, user: { id: user.id, username: user.username, role: user.role } })
+    res.cookies.set('tgarb_session', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: 7 * 24 * 60 * 60,
+      path: '/',
+      sameSite: 'lax',
     })
-  } else {
-    // Verify credentials
-    const user = await prisma.adminUser.findUnique({ where: { username } })
-    if (!user || user.passwordHash !== hashPassword(password)) {
-      return NextResponse.json({ error: 'Неверный логин или пароль' }, { status: 401 })
+    return res
+  } catch (err) {
+    if (err.message === 'PENDING') {
+      return NextResponse.json({ error: 'PENDING', message: 'Ожидайте одобрения администратора' }, { status: 403 })
     }
+    return NextResponse.json({ error: err.message }, { status: 401 })
   }
-
-  // Set session cookie
-  const token = randomBytes(32).toString('hex')
-  const res = NextResponse.json({ ok: true })
-  res.cookies.set('tgarb_session', token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    maxAge: 7 * 24 * 60 * 60, // 7 days
-    path: '/',
-    sameSite: 'lax',
-  })
-  return res
 }

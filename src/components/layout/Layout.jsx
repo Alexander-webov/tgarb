@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import {
   LayoutDashboard, Radio, Globe, Send, Zap, Bot,
-  Link2, BarChart3, Calculator, Flame, Users, Settings, Search, Bell
+  Link2, BarChart3, Calculator, Flame, Users, Settings, Search, Bell, Shield
 } from 'lucide-react'
 
 const NAV = [
@@ -25,7 +25,8 @@ const NAV = [
   { label: 'Система', items: [
     { href: '/warmup',    icon: Flame,    label: 'Прогрев',   badge: null },
     { href: '/accounts',  icon: Users,    label: 'Аккаунты',  badge: null },
-    { href: '/spy',       icon: Search, label: 'Шпион',    badge: 'New', bc: 'green' },
+    { href: '/spy',       icon: Search,   label: 'Шпион',     badge: 'New', bc: 'green' },
+    { href: '/admin',     icon: Shield,   label: 'Админ',     badge: null },
     { href: '/settings',  icon: Settings, label: 'Настройки', badge: null },
   ]},
 ]

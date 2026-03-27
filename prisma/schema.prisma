@@ -28,6 +28,8 @@ model TgAccount {
   delayMax     Int     @default(60)
   niche        String  @default("general")
 
+  userId       Int?
+  user         User?     @relation("UserAccounts", fields: [userId], references: [id])
   lastActive   DateTime?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
@@ -83,6 +85,8 @@ model Channel {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  userId       Int?
+  user         User?     @relation("UserChannels", fields: [userId], references: [id])
   posts        Post[]
   parsedUsers  ParsedUser[]
   keywords     ChannelKeyword[]
@@ -153,6 +157,8 @@ model Campaign {
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
 
+  userId           Int?
+  user             User?     @relation("UserCampaigns", fields: [userId], references: [id])
   accounts         CampaignAccount[]
   sentMessages     SentMessage[]
 
@@ -221,6 +227,8 @@ model Offer {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
+  userId         Int?
+  user           User?     @relation("UserOffers", fields: [userId], references: [id])
   trackLinks     TrackLink[]
 
   @@map("offers")
@@ -268,6 +276,8 @@ model Funnel {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  userId      Int?
+  user        User?     @relation("UserFunnels", fields: [userId], references: [id])
   sessions    FunnelSession[]
 
   @@map("funnels")
@@ -337,4 +347,31 @@ model Notification {
   createdAt DateTime @default(now())
 
   @@map("notifications")
+}
+
+// ── Multi-tenant Users ────────────────────────────────────
+model User {
+  id           Int      @id @default(autoincrement())
+  email        String   @unique
+  username     String   @unique
+  passwordHash String
+  role         UserRole @default(PENDING)
+  isApproved   Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Each user has their own data
+  accounts     TgAccount[]    @relation("UserAccounts")
+  channels     Channel[]      @relation("UserChannels")
+  campaigns    Campaign[]     @relation("UserCampaigns")
+  offers       Offer[]        @relation("UserOffers")
+  funnels      Funnel[]       @relation("UserFunnels")
+
+  @@map("users")
+}
+
+enum UserRole {
+  PENDING
+  USER
+  ADMIN
 }

@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { Plus, Upload, Wifi, Trash2, RefreshCw, CheckCircle2, AlertTriangle, WifiOff } from 'lucide-react'
+import { Plus, Upload, Wifi, Trash2, RefreshCw, CheckCircle2, AlertTriangle, WifiOff, Key } from 'lucide-react'
+import Link from 'next/link'
 import toast from 'react-hot-toast'
 import { Layout, Topbar } from '@/components/layout/Layout'
 import { Modal, FormField, Badge, ProgressBar, Toggle, Spinner, Empty } from '@/components/ui'
@@ -67,6 +68,7 @@ export default function Accounts() {
         actions={
           <div className="flex gap-2">
             <button className="btn-ghost" onClick={() => setProxyOpen(true)}><Plus size={14}/> Прокси</button>
+            <Link href="/accounts/session-gen" className="btn-ghost"><Key size={14}/> Генератор Session</Link>
             <button className="btn-primary" onClick={() => setAddOpen(true)}><Plus size={14}/> Аккаунт</button>
           </div>
         }/>
