@@ -5,40 +5,24 @@ import { createClient } from '@supabase/supabase-js'
 
 export async function GET(req) {
   try {
-    // Get Supabase session from cookie
-    const cookieHeader = req.headers.get('cookie') || ''
-    
-    // Extract sb- token from cookies
-    const cookies = Object.fromEntries(
-      cookieHeader.split(';').map(c => {
-        const [k, ...v] = c.trim().split('=')
-        return [k, v.join('=')]
-      })
-    )
-    
-    // Find the Supabase auth token cookie
-    const tokenCookieName = Object.keys(cookies).find(k => 
-      k.startsWith('sb-') && k.includes('-auth-token')
-    )
-    
-    if (!tokenCookieName) return NextResponse.json({ user: null })
-    
-    let tokenData
-    try {
-      tokenData = JSON.parse(decodeURIComponent(cookies[tokenCookieName]))
-    } catch {
-      return NextResponse.json({ user: null })
-    }
-    
-    const accessToken = tokenData?.access_token || tokenData?.[0]?.access_token
-    if (!accessToken) return NextResponse.json({ user: null })
+    const supabaseUrl  = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const serviceKey   = process.env.SUPABASE_SERVICE_ROLE_KEY
+    const anonKey      = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-    // Verify token with Supabase
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-    )
-    const { data: { user: sbUser }, error } = await supabase.auth.getUser(accessToken)
+    if (!supabaseUrl || !serviceKey) return NextResponse.json({ user: null })
+
+    // Try to get access token from Authorization header (sent by client)
+    const authHeader = req.headers.get('authorization') || ''
+    const token = authHeader.replace('Bearer ', '').trim()
+
+    if (!token) return NextResponse.json({ user: null })
+
+    // Verify token using admin client
+    const adminSupabase = createClient(supabaseUrl, serviceKey, {
+      auth: { autoRefreshToken: false, persistSession: false }
+    })
+
+    const { data: { user: sbUser }, error } = await adminSupabase.auth.getUser(token)
     if (error || !sbUser) return NextResponse.json({ user: null })
 
     // Get from our DB
@@ -47,7 +31,6 @@ export async function GET(req) {
     })
 
     if (!user) {
-      // Auto-create
       const count = await prisma.user.count()
       user = await prisma.user.create({
         data: {

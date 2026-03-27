@@ -40,7 +40,14 @@ export function Sidebar() {
   const [me, setMe] = useState(null)
 
   useEffect(() => {
-    fetch('/api/auth/me').then(r=>r.json()).then(d => setMe(d.user)).catch(()=>{})
+    async function load() {
+      try {
+        const { getMe } = await import('@/lib/supabase/getMe')
+        const user = await getMe()
+        setMe(user)
+      } catch {}
+    }
+    load()
   }, [])
 
   return (
@@ -119,7 +126,7 @@ export function Topbar({ title, subtitle, actions }) {
   const router = useRouter()
 
   useEffect(() => {
-    fetch('/api/auth/me').then(r=>r.json()).then(d => setUser(d.user)).catch(()=>{})
+    import('@/lib/supabase/getMe').then(({ getMe }) => getMe()).then(u => setUser(u)).catch(()=>{})
     const load = () => fetch('/api/notifications')
       .then(r => r.json())
       .then(n => setUnread(Array.isArray(n) ? n.filter(x => !x.isRead).length : 0))

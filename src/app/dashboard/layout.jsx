@@ -6,22 +6,22 @@ export default function DashboardLayout({ children }) {
   const router = useRouter()
 
   useEffect(() => {
-    // Check if user is approved
-    fetch('/api/auth/me')
-      .then(r => r.json())
-      .then(({ user }) => {
+    async function checkApproval() {
+      try {
+        const { getMe } = await import('@/lib/supabase/getMe')
+        const user = await getMe()
         if (!user) {
           router.push('/login')
           return
         }
         if (!user.isApproved || user.role === 'PENDING') {
-          // Sign out and redirect
-          fetch('/api/auth/logout', { method: 'POST' }).then(() => {
-            router.push('/login?pending=1')
-          })
+          const { createClient } = await import('@/lib/supabase/client')
+          await createClient().auth.signOut()
+          router.push('/login?pending=1')
         }
-      })
-      .catch(() => {})
+      } catch {}
+    }
+    checkApproval()
   }, [])
 
   return <>{children}</>
