@@ -26,7 +26,6 @@ const NAV = [
     { href: '/warmup',    icon: Flame,    label: 'Прогрев',   badge: null },
     { href: '/accounts',  icon: Users,    label: 'Аккаунты',  badge: null },
     { href: '/spy',       icon: Search,   label: 'Шпион',     badge: 'New', bc: 'green' },
-    { href: '/admin',     icon: Shield,   label: 'Админ',     badge: null },
     { href: '/settings',  icon: Settings, label: 'Настройки', badge: null },
   ]},
 ]
@@ -38,6 +37,12 @@ const BC = {
 
 export function Sidebar() {
   const path = usePathname()
+  const [me, setMe] = useState(null)
+
+  useEffect(() => {
+    fetch('/api/auth/me').then(r=>r.json()).then(d => setMe(d.user)).catch(()=>{})
+  }, [])
+
   return (
     <aside className="fixed left-0 top-0 bottom-0 w-[220px] bg-surface border-r border-border flex flex-col z-50">
       <div className="px-5 py-6 border-b border-border">
@@ -78,6 +83,24 @@ export function Sidebar() {
             </div>
           </div>
         ))}
+
+        {/* Admin link — only for admins */}
+        {me?.role === 'ADMIN' && (
+          <div>
+            <div className="text-[10px] font-mono text-muted uppercase tracking-[2px] px-2 mb-2">Управление</div>
+            <div className="space-y-0.5">
+              <Link href="/admin"
+                className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all
+                  ${path.startsWith('/admin')
+                    ? 'bg-accent/8 border border-accent/20 text-accent'
+                    : 'text-muted hover:text-[#e8eaf0] hover:bg-surface2 border border-transparent'
+                  }`}>
+                <Shield size={15}/>
+                <span className="flex-1">Админ</span>
+              </Link>
+            </div>
+          </div>
+        )}
       </nav>
 
       <div className="px-5 py-4 border-t border-border">
