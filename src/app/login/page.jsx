@@ -9,6 +9,13 @@ export default function Login() {
   const [info,   setInfo]   = useState('')
   const [loading,setLoading]= useState(false)
   const router = useRouter()
+  const [pendingMsg, setPendingMsg] = useState('')
+
+  // Check URL for pending param
+  if (typeof window !== 'undefined') {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('pending') && !pendingMsg) setPendingMsg('Ваша заявка ожидает одобрения администратора')
+  }
 
   const getSupabase = async () => {
     const { createClient } = await import('@/lib/supabase/client')
@@ -86,6 +93,7 @@ export default function Login() {
             ))}
           </div>
 
+          {pendingMsg && <div className="bg-warning/10 border border-warning/20 text-warning text-xs font-mono rounded-lg px-3 py-2.5 mb-4">{pendingMsg}</div>}
           {error && <div className="bg-danger/10 border border-danger/20 text-danger text-xs font-mono rounded-lg px-3 py-2.5 mb-4">{error}</div>}
           {info  && <div className="bg-success/10 border border-success/20 text-success text-xs font-mono rounded-lg px-3 py-2.5 mb-4">{info}</div>}
 

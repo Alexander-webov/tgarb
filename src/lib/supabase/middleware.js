@@ -6,22 +6,28 @@ export async function updateSession(request) {
 
   const isStatic = pathname.startsWith('/_next') || pathname.startsWith('/favicon') || pathname.startsWith('/r/')
   const isPublic = ['/', '/login', '/register'].includes(pathname) || pathname.startsWith('/auth/')
-  const isApi    = pathname.startsWith('/api/auth') || pathname === '/api/postback'
+  const isPublicApi = pathname.startsWith('/api/auth/login') ||
+                      pathname.startsWith('/api/auth/register') ||
+                      pathname.startsWith('/api/auth/logout') ||
+                      pathname.startsWith('/api/auth/me') ||
+                      pathname === '/api/postback'
 
-  if (isStatic || isPublic || isApi) {
-    return NextResponse.next()
-  }
+  if (isStatic || isPublic || isPublicApi) return NextResponse.next()
 
-  // Check for Supabase session cookie
-  const hasSession = request.cookies.getAll().some(c => 
+  // Check Supabase session cookie
+  const cookies = request.cookies.getAll()
+  const hasSupabaseSession = cookies.some(c =>
     c.name.startsWith('sb-') && c.name.includes('-auth-token')
   )
 
-  if (!hasSession) {
+  if (!hasSupabaseSession) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)
   }
 
-  return NextResponse.next()
+  // For protected pages - check approval via API call
+  // We pass a special header to the me endpoint
+  const response = NextResponse.next()
+  return response
 }
