@@ -22,7 +22,7 @@ export default function Register() {
     const data = await res.json()
     setLoading(false)
     if (res.ok) {
-      if (data.autoLogin) { router.push('/'); router.refresh() }
+      if (data.autoLogin) { router.push('/dashboard'); router.refresh() }
       else setPending(true)
     } else {
       setError(data.error || 'Ошибка регистрации')

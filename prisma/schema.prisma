@@ -354,7 +354,8 @@ model User {
   id           Int      @id @default(autoincrement())
   email        String   @unique
   username     String   @unique
-  passwordHash String
+  passwordHash String   @default("")
+  supabaseId   String?  @unique
   role         UserRole @default(PENDING)
   isApproved   Boolean  @default(false)
   createdAt    DateTime @default(now())

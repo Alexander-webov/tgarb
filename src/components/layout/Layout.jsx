@@ -10,7 +10,7 @@ import {
 
 const NAV = [
   { label: 'Главное', items: [
-    { href: '/',          icon: LayoutDashboard, label: 'Обзор',     badge: 'Live',  bc: 'green'  },
+    { href: '/dashboard', icon: LayoutDashboard, label: 'Обзор',     badge: 'Live',  bc: 'green'  },
     { href: '/channels',  icon: Radio,           label: 'Каналы',   badge: null },
     { href: '/discover',  icon: Globe,           label: 'Поиск',    badge: 'New', bc: 'purple' },
   ]},

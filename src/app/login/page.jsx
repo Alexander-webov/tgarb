@@ -1,48 +1,70 @@
 'use client'
-// src/app/login/page.jsx
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
 
 export default function Login() {
   const [tab,    setTab]    = useState('login')
-  const [login,  setLogin]  = useState({ login: '', password: '' })
-  const [reg,    setReg]    = useState({ email: '', username: '', password: '', confirm: '' })
+  const [form,   setForm]   = useState({ email: '', password: '', username: '' })
   const [error,  setError]  = useState('')
   const [info,   setInfo]   = useState('')
   const [loading,setLoading]= useState(false)
   const router = useRouter()
-
-  useEffect(() => { setError(''); setInfo('') }, [tab])
+  const supabase = createClient()
 
   const handleLogin = async () => {
-    if (!login.login || !login.password) { setError('Заполни все поля'); return }
+    if (!form.email || !form.password) { setError('Заполни все поля'); return }
     setLoading(true); setError('')
-    const res = await fetch('/api/auth/login', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(login),
+    const { error } = await supabase.auth.signInWithPassword({
+      email: form.email, password: form.password
     })
-    const data = await res.json()
     setLoading(false)
-    if (res.ok) { router.push('/'); router.refresh() }
-    else if (data.error === 'PENDING') setError('⏳ Ваша заявка ожидает одобрения администратора.')
-    else setError(data.error || 'Ошибка входа')
+    if (error) {
+      if (error.message.includes('Invalid login')) setError('Неверный email или пароль')
+      else if (error.message.includes('Email not confirmed')) setError('Подтверди email — проверь почту')
+      else setError(error.message)
+    } else {
+      router.push('/dashboard')
+      router.refresh()
+    }
   }
 
   const handleRegister = async () => {
-    if (!reg.email || !reg.username || !reg.password) { setError('Заполни все поля'); return }
-    if (reg.password !== reg.confirm) { setError('Пароли не совпадают'); return }
-    if (reg.password.length < 6) { setError('Пароль минимум 6 символов'); return }
+    if (!form.email || !form.password || !form.username) { setError('Заполни все поля'); return }
+    if (form.password.length < 6) { setError('Пароль минимум 6 символов'); return }
     setLoading(true); setError('')
-    const res = await fetch('/api/auth/register', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: reg.email, username: reg.username, password: reg.password }),
+
+    const { data, error } = await supabase.auth.signUp({
+      email: form.email,
+      password: form.password,
+      options: {
+        data: { username: form.username },
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
+      }
     })
-    const data = await res.json()
     setLoading(false)
-    if (res.ok) {
-      if (data.autoLogin) { router.push('/'); router.refresh() }
-      else { setInfo('✅ Заявка отправлена! Ожидайте одобрения администратора.'); setTab('login') }
-    } else setError(data.error || 'Ошибка регистрации')
+    if (error) { setError(error.message); return }
+
+    // Save to our users table via API
+    await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: form.email, username: form.username, supabaseId: data.user?.id }),
+    })
+
+    setInfo('✅ Проверь почту — мы отправили ссылку для подтверждения. После подтверждения ожидай одобрения администратора.')
+    setTab('login')
+  }
+
+  const handleForgot = async () => {
+    if (!form.email) { setError('Введи email'); return }
+    setLoading(true)
+    const { error } = await supabase.auth.resetPasswordForEmail(form.email, {
+      redirectTo: `${window.location.origin}/auth/reset-password`,
+    })
+    setLoading(false)
+    if (error) setError(error.message)
+    else setInfo('✅ Письмо для сброса пароля отправлено на ' + form.email)
   }
 
   return (
@@ -56,64 +78,57 @@ export default function Login() {
           {/* Tabs */}
           <div className="flex bg-surface2 rounded-xl p-1 mb-6">
             {[['login','Вход'],['register','Регистрация']].map(([t,l]) => (
-              <button key={t} onClick={() => setTab(t)}
-                className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${tab===t ? 'bg-accent text-black' : 'text-muted hover:text-[#e8eaf0]'}`}>{l}</button>
+              <button key={t} onClick={() => { setTab(t); setError(''); setInfo('') }}
+                className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${tab===t?'bg-accent text-black':'text-muted hover:text-[#e8eaf0]'}`}>{l}</button>
             ))}
           </div>
 
-          {error && <div className="bg-danger/10 border border-danger/20 text-danger text-xs font-mono rounded-lg px-3 py-2.5 mb-4 leading-relaxed">{error}</div>}
-          {info  && <div className="bg-success/10 border border-success/20 text-success text-xs font-mono rounded-lg px-3 py-2.5 mb-4 leading-relaxed">{info}</div>}
+          {error && <div className="bg-danger/10 border border-danger/20 text-danger text-xs font-mono rounded-lg px-3 py-2.5 mb-4">{error}</div>}
+          {info  && <div className="bg-success/10 border border-success/20 text-success text-xs font-mono rounded-lg px-3 py-2.5 mb-4">{info}</div>}
+
+          <div className="mb-4">
+            <label className="block text-[11px] font-mono text-muted uppercase tracking-widest mb-1.5">Email</label>
+            <input className="input" type="email" placeholder="you@example.com" value={form.email}
+              onChange={e => setForm({...form, email: e.target.value})}/>
+          </div>
+
+          {tab === 'register' && (
+            <div className="mb-4">
+              <label className="block text-[11px] font-mono text-muted uppercase tracking-widest mb-1.5">Username</label>
+              <input className="input" placeholder="myusername" value={form.username}
+                onChange={e => setForm({...form, username: e.target.value})}/>
+            </div>
+          )}
+
+          <div className="mb-2">
+            <label className="block text-[11px] font-mono text-muted uppercase tracking-widest mb-1.5">Пароль</label>
+            <input className="input" type="password" placeholder="••••••••" value={form.password}
+              onChange={e => setForm({...form, password: e.target.value})}
+              onKeyDown={e => e.key==='Enter' && (tab==='login' ? handleLogin() : handleRegister())}/>
+          </div>
 
           {tab === 'login' && (
-            <div>
-              <div className="mb-4">
-                <label className="block text-[11px] font-mono text-muted uppercase tracking-widest mb-1.5">Email или Username</label>
-                <input className="input" placeholder="admin" value={login.login}
-                  onChange={e => setLogin({...login, login: e.target.value})}
-                  onKeyDown={e => e.key==='Enter' && handleLogin()}/>
-              </div>
-              <div className="mb-6">
-                <label className="block text-[11px] font-mono text-muted uppercase tracking-widest mb-1.5">Пароль</label>
-                <input className="input" type="password" placeholder="••••••••" value={login.password}
-                  onChange={e => setLogin({...login, password: e.target.value})}
-                  onKeyDown={e => e.key==='Enter' && handleLogin()}/>
-              </div>
-              <button className="btn-primary w-full justify-center" onClick={handleLogin} disabled={loading}>
-                {loading ? 'Входим...' : '→ Войти'}
+            <div className="text-right mb-4">
+              <button onClick={handleForgot} className="text-[11px] font-mono text-accent hover:underline">
+                Забыл пароль?
               </button>
             </div>
           )}
 
-          {tab === 'register' && (
-            <div>
-              <div className="mb-3">
-                <label className="block text-[11px] font-mono text-muted uppercase tracking-widest mb-1.5">Email</label>
-                <input className="input" type="email" placeholder="you@example.com" value={reg.email}
-                  onChange={e => setReg({...reg, email: e.target.value})}/>
-              </div>
-              <div className="mb-3">
-                <label className="block text-[11px] font-mono text-muted uppercase tracking-widest mb-1.5">Username</label>
-                <input className="input" placeholder="myusername" value={reg.username}
-                  onChange={e => setReg({...reg, username: e.target.value})}/>
-              </div>
-              <div className="mb-3">
-                <label className="block text-[11px] font-mono text-muted uppercase tracking-widest mb-1.5">Пароль</label>
-                <input className="input" type="password" placeholder="минимум 6 символов" value={reg.password}
-                  onChange={e => setReg({...reg, password: e.target.value})}/>
-              </div>
-              <div className="mb-6">
-                <label className="block text-[11px] font-mono text-muted uppercase tracking-widest mb-1.5">Повтори пароль</label>
-                <input className="input" type="password" placeholder="••••••••" value={reg.confirm}
-                  onChange={e => setReg({...reg, confirm: e.target.value})}
-                  onKeyDown={e => e.key==='Enter' && handleRegister()}/>
-              </div>
+          {tab === 'login' ? (
+            <button className="btn-primary w-full justify-center" onClick={handleLogin} disabled={loading}>
+              {loading ? 'Входим...' : '→ Войти'}
+            </button>
+          ) : (
+            <>
+              <div className="mb-4"/>
               <button className="btn-primary w-full justify-center" onClick={handleRegister} disabled={loading}>
                 {loading ? 'Регистрируемся...' : '→ Зарегистрироваться'}
               </button>
               <div className="mt-4 text-center text-[11px] font-mono text-muted">
-                Первый пользователь становится<br/>администратором автоматически
+                После регистрации нужно подтвердить email<br/>и ожидать одобрения администратора
               </div>
-            </div>
+            </>
           )}
         </div>
       </div>
