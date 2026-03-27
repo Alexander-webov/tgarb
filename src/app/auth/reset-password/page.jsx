@@ -1,8 +1,6 @@
 'use client'
-export const dynamic = 'force-dynamic'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
 
 export default function ResetPassword() {
   const [password, setPassword] = useState('')
@@ -10,12 +8,13 @@ export default function ResetPassword() {
   const [error,    setError]    = useState('')
   const [loading,  setLoading]  = useState(false)
   const router = useRouter()
-  const supabase = createClient()
 
   const handleReset = async () => {
     if (password !== confirm) { setError('Пароли не совпадают'); return }
     if (password.length < 6)  { setError('Минимум 6 символов'); return }
     setLoading(true)
+    const { createClient } = await import('@/lib/supabase/client')
+    const supabase = createClient()
     const { error } = await supabase.auth.updateUser({ password })
     setLoading(false)
     if (error) setError(error.message)

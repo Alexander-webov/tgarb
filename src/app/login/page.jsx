@@ -1,8 +1,6 @@
 'use client'
-export const dynamic = 'force-dynamic'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
 
 export default function Login() {
   const [tab,    setTab]    = useState('login')
@@ -11,11 +9,16 @@ export default function Login() {
   const [info,   setInfo]   = useState('')
   const [loading,setLoading]= useState(false)
   const router = useRouter()
-  const supabase = createClient()
+
+  const getSupabase = async () => {
+    const { createClient } = await import('@/lib/supabase/client')
+    return createClient()
+  }
 
   const handleLogin = async () => {
     if (!form.email || !form.password) { setError('Заполни все поля'); return }
     setLoading(true); setError('')
+    const supabase = await getSupabase()
     const { error } = await supabase.auth.signInWithPassword({
       email: form.email, password: form.password
     })
@@ -34,7 +37,7 @@ export default function Login() {
     if (!form.email || !form.password || !form.username) { setError('Заполни все поля'); return }
     if (form.password.length < 6) { setError('Пароль минимум 6 символов'); return }
     setLoading(true); setError('')
-
+    const supabase = await getSupabase()
     const { data, error } = await supabase.auth.signUp({
       email: form.email,
       password: form.password,
@@ -46,20 +49,20 @@ export default function Login() {
     setLoading(false)
     if (error) { setError(error.message); return }
 
-    // Save to our users table via API
     await fetch('/api/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: form.email, username: form.username, supabaseId: data.user?.id }),
     })
 
-    setInfo('✅ Проверь почту — мы отправили ссылку для подтверждения. После подтверждения ожидай одобрения администратора.')
+    setInfo('✅ Проверь почту — мы отправили ссылку для подтверждения.')
     setTab('login')
   }
 
   const handleForgot = async () => {
     if (!form.email) { setError('Введи email'); return }
     setLoading(true)
+    const supabase = await getSupabase()
     const { error } = await supabase.auth.resetPasswordForEmail(form.email, {
       redirectTo: `${window.location.origin}/auth/reset-password`,
     })
@@ -76,7 +79,6 @@ export default function Login() {
           <div className="text-xs font-mono text-muted uppercase tracking-[3px]">Arbitrage Platform</div>
         </div>
         <div className="card p-6">
-          {/* Tabs */}
           <div className="flex bg-surface2 rounded-xl p-1 mb-6">
             {[['login','Вход'],['register','Регистрация']].map(([t,l]) => (
               <button key={t} onClick={() => { setTab(t); setError(''); setInfo('') }}
@@ -127,7 +129,7 @@ export default function Login() {
                 {loading ? 'Регистрируемся...' : '→ Зарегистрироваться'}
               </button>
               <div className="mt-4 text-center text-[11px] font-mono text-muted">
-                После регистрации нужно подтвердить email<br/>и ожидать одобрения администратора
+                После регистрации подтверди email<br/>и ожидай одобрения администратора
               </div>
             </>
           )}
