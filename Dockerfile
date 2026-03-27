@@ -14,4 +14,4 @@ RUN npm run build
 
 EXPOSE 3000
 
-CMD ["sh", "-c", "npx prisma db push --skip-generate --accept-data-loss && node server.js"]
+CMD ["sh", "-c", "npx prisma db push --skip-generate --accept-data-loss && npx next start -p ${PORT:-3000}"]
