@@ -1,4 +1,3 @@
-// server.js — Custom Next.js server with WebSocket
 import { createServer } from 'http'
 import { parse } from 'url'
 import next from 'next'
@@ -21,4 +20,7 @@ app.prepare().then(() => {
     console.log(`> TGArb ready on http://localhost:${port}`)
     console.log(`> WebSocket ready on ws://localhost:${port}/api/ws`)
   })
+}).catch(err => {
+  console.error('Failed to start:', err)
+  process.exit(1)
 })
