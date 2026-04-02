@@ -91,7 +91,6 @@ export default function Accounts() {
             <button className="btn-ghost" onClick={() => setProxyOpen(true)}><Plus size={14}/> Прокси</button>
             <Link href="/accounts/session-gen" className="btn-ghost"><Key size={14}/> Генератор Session</Link>
             <button className="btn-ghost" onClick={() => setJsonOpen(true)}><Upload size={14}/> Импорт JSON</button>
-            <button className="btn-ghost" onClick={() => setJsonImportOpen(true)}><Upload size={14}/> Импорт JSON</button>
             <button className="btn-primary" onClick={() => setAddOpen(true)}><Plus size={14}/> Аккаунт</button>
           </div>
         }/>
