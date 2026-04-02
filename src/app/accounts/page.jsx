@@ -19,6 +19,10 @@ export default function Accounts() {
   const [proxies,  setProxies]  = useState([])
   const [loading,  setLoading]  = useState(true)
   const [addOpen,  setAddOpen]  = useState(false)
+  const [jsonOpen, setJsonOpen] = useState(false)
+  const [jsonFile, setJsonFile] = useState(null)
+  const [sesFile,  setSesFile]  = useState(null)
+  const [importing,setImporting]= useState(false)
   const [proxyOpen,setProxyOpen]= useState(false)
   const [form,     setForm]     = useState({ phone:'', dailyLimit:50, delayMin:20, delayMax:60 })
   const [proxyForm,setProxyForm]= useState({ host:'', port:1080, proxyType:'socks5', username:'', password:'', country:'' })
@@ -62,6 +66,23 @@ export default function Accounts() {
     else toast.error('Ошибка')
   }
 
+  const importJson = async () => {
+    if (!jsonFile || !sesFile) { toast.error('Загрузи оба файла'); return }
+    setImporting(true)
+    const fd = new FormData()
+    fd.append('json', jsonFile)
+    fd.append('session', sesFile)
+    const res = await fetch('/api/accounts/import-json', { method: 'POST', body: fd })
+    const data = await res.json()
+    setImporting(false)
+    if (res.ok) {
+      toast.success(data.message)
+      setJsonOpen(false); setJsonFile(null); setSesFile(null)
+      if (typeof loadAccounts === 'function') loadAccounts()
+      else window.location.reload()
+    } else toast.error(data.error || 'Ошибка')
+  }
+
   return (
     <Layout>
       <Topbar title="Аккаунты" subtitle={`${accounts.filter(a=>a.status==='ACTIVE').length} активных`}
@@ -69,6 +90,8 @@ export default function Accounts() {
           <div className="flex gap-2">
             <button className="btn-ghost" onClick={() => setProxyOpen(true)}><Plus size={14}/> Прокси</button>
             <Link href="/accounts/session-gen" className="btn-ghost"><Key size={14}/> Генератор Session</Link>
+            <button className="btn-ghost" onClick={() => setJsonOpen(true)}><Upload size={14}/> Импорт JSON</button>
+            <button className="btn-ghost" onClick={() => setJsonImportOpen(true)}><Upload size={14}/> Импорт JSON</button>
             <button className="btn-primary" onClick={() => setAddOpen(true)}><Plus size={14}/> Аккаунт</button>
           </div>
         }/>
