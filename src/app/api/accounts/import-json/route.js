@@ -2,8 +2,9 @@ export const dynamic = 'force-dynamic'
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
-// Pure JS Telethon SQLite session parser
-// Key insight: dc_id is stored as SQLite rowid (INTEGER PRIMARY KEY), not as a column value
+// Pure JS Telethon SQLite session → gram.js StringSession converter
+// gram.js StringSession format: "1" + base64(dc_id(1) + ip(4) + port(2) + auth_key(256))
+// Total payload = 263 bytes → base64 = 352 chars (gram.js recognizes this as Telethon format)
 function readTelethonSession(buffer) {
   const magic = buffer.slice(0, 15).toString('utf8')
   if (!magic.startsWith('SQLite format 3')) {
@@ -16,7 +17,7 @@ function readTelethonSession(buffer) {
   for (let pageIdx = 0; pageIdx < numPages; pageIdx++) {
     const pageOffset = pageIdx * pageSize
     if (pageOffset + pageSize > buffer.length) break
-    if (buffer.readUInt8(pageOffset) !== 0x0D) continue // only leaf table pages
+    if (buffer.readUInt8(pageOffset) !== 0x0D) continue
 
     const cellCount = buffer.readUInt16BE(pageOffset + 3)
 
@@ -31,9 +32,8 @@ function readTelethonSession(buffer) {
       try {
         const raw = buffer.slice(cellOffset)
         let pos = 0
-
-        const [, pb] = readVarint(raw, pos); pos += pb       // payload size
-        const [rowid, rb] = readVarint(raw, pos); pos += rb  // rowid = dc_id!
+        const [, pb] = readVarint(raw, pos); pos += pb
+        const [rowid, rb] = readVarint(raw, pos); pos += rb  // rowid = dc_id
 
         const [headerSize, hb] = readVarint(raw, pos)
         const headerStart = pos; pos += hb
@@ -44,18 +44,16 @@ function readTelethonSession(buffer) {
           types.push(t)
         }
 
-        // sessions table: dc_id(NULL=rowid), server_address(text), port(int), auth_key(blob), [takeout_id(null)]
-        if (types.length < 4) continue
-        if (types[0] !== 0) continue // dc_id must be NULL (stored as rowid)
+        // sessions table: dc_id(NULL=rowid), server_address(text), port(int), auth_key(blob)
+        if (types.length < 4 || types[0] !== 0) continue
 
-        // Read server_address (text)
+        // server_address (text)
         if (types[1] < 13 || types[1] % 2 !== 1) continue
         const addrLen = (types[1] - 13) / 2
-        const serverAddr = raw.slice(pos, pos + addrLen).toString('utf8')
-        pos += addrLen
+        const serverAddr = raw.slice(pos, pos + addrLen).toString('utf8'); pos += addrLen
         if (!serverAddr.match(/^\d+\.\d+\.\d+\.\d+$/)) continue
 
-        // Read port (integer)
+        // port (integer)
         let port = 0
         if (types[2] === 1) { port = raw.readInt8(pos); pos += 1 }
         else if (types[2] === 2) { port = raw.readInt16BE(pos); pos += 2 }
@@ -63,7 +61,7 @@ function readTelethonSession(buffer) {
         else if (types[2] === 4) { port = raw.readInt32BE(pos); pos += 4 }
         else continue
 
-        // Read auth_key (blob, must be 256 bytes)
+        // auth_key (blob, must be 256 bytes)
         if (types[3] < 12 || types[3] % 2 !== 0) continue
         const keyLen = (types[3] - 12) / 2
         if (keyLen !== 256) continue
@@ -72,15 +70,17 @@ function readTelethonSession(buffer) {
         const dcId = rowid
         if (dcId < 1 || dcId > 5) continue
 
-        // Build Telethon StringSession: dc_id(1) + ip(4) + port(2) + auth_key(256)
+        // Build gram.js StringSession:
+        // "1" + base64(dc_id(1 byte) + ip(4 bytes) + port(2 bytes) + auth_key(256 bytes))
         const ipParts = serverAddr.split('.').map(Number)
-        const result = Buffer.alloc(1 + 4 + 2 + 256)
-        result.writeUInt8(dcId, 0)
-        ipParts.forEach((b, i) => result.writeUInt8(b, 1 + i))
-        result.writeUInt16BE(port, 5)
-        authKey.copy(result, 7)
+        const payload = Buffer.alloc(1 + 4 + 2 + 256)
+        payload.writeUInt8(dcId, 0)
+        ipParts.forEach((b, i) => payload.writeUInt8(b, 1 + i))
+        payload.writeUInt16BE(port, 5)
+        authKey.copy(payload, 7)
 
-        return result.toString('base64url')
+        // gram.js uses regular base64 (not url-safe) with padding
+        return '1' + payload.toString('base64')
       } catch {
         continue
       }
@@ -137,13 +137,9 @@ export async function POST(req) {
     } else {
       await prisma.tgAccount.create({
         data: {
-          phone: phoneNorm,
-          sessionData: sessionString,
-          username, firstName,
-          status: 'OFFLINE',
-          dailyLimit: 50,
-          warmupDays: 0,
-          niche: 'general',
+          phone: phoneNorm, sessionData: sessionString,
+          username, firstName, status: 'OFFLINE',
+          dailyLimit: 50, warmupDays: 0, niche: 'general',
         }
       })
     }
