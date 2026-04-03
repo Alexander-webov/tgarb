@@ -181,9 +181,14 @@ agenda.define('parse_posts', async (job) => {
 // ── Прогрев аккаунтов ─────────────────────────────────────
 agenda.define('warmup_step', async (job) => {
   const { accountId } = job.attrs.data
-  const { smartWarmupStep } = await import('../src/lib/telegram/warmup.js')
-  const result = await smartWarmupStep(accountId)
-  logger.info({ accountId, ...result }, 'Warmup step')
+  logger.info({ accountId }, 'warmup_step START')
+  try {
+    const { smartWarmupStep } = await import('../src/lib/telegram/warmup.js')
+    const result = await smartWarmupStep(accountId)
+    logger.info({ accountId, ...result }, 'warmup_step DONE')
+  } catch (err) {
+    logger.error({ accountId, err: err.message }, 'warmup_step ERROR')
+  }
 })
 
 agenda.define('warmup_cycle', async () => {
