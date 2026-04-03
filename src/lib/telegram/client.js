@@ -2,8 +2,7 @@
 import { TelegramClient } from 'telegram'
 import { StringSession } from 'telegram/sessions/index.js'
 import { Api } from 'telegram/tl/index.js'
-import socksLib from 'socks'
-const { SocksProxyAgent } = socksLib
+// socks proxy handled via gram.js built-in support
 import { prisma } from '../prisma.js'
 import { env } from '../env.js'
 import pino from 'pino'
@@ -51,7 +50,7 @@ class AccountPool {
 
       // SOCKS5 proxy
       if (acc.proxy?.isActive) {
-        clientOptions.networkSocket = await this._socksSocket(acc.proxy)
+        clientOptions.socks = await this._socksSocket(acc.proxy)
       }
 
       const client = new TelegramClient(session, env.TG_API_ID, env.TG_API_HASH, clientOptions)
@@ -82,10 +81,13 @@ class AccountPool {
   }
 
   async _socksSocket(proxy) {
-    const agent = new SocksProxyAgent(
-      `socks5://${proxy.username}:${proxy.password}@${proxy.host}:${proxy.port}`
-    )
-    return agent
+    return {
+      socksType: 5,
+      host: proxy.host,
+      port: proxy.port,
+      userId: proxy.username || undefined,
+      password: proxy.password || undefined,
+    }
   }
 
   async disconnect(accountId) {
