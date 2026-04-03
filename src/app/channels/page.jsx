@@ -16,6 +16,15 @@ export function ChannelsPage() {
   const [search,    setSearch]    = useState('')
   const [form,      setForm]      = useState({ username:'', category:'', isMonitored:true, isParsing:false })
 
+  const handleToggle = async (id, field, value) => {
+    await fetch(`/api/channels/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ [field]: value }),
+    })
+    load()
+  }
+
   const load = async () => {
     setLoading(true)
     const [ch, ac] = await Promise.all([
@@ -82,8 +91,8 @@ export function ChannelsPage() {
                     <td className="px-4 py-3 font-mono text-xs">{ch.subscribers ? `${(ch.subscribers/1000).toFixed(0)}K` : '—'}</td>
                     <td className="px-4 py-3 font-mono text-xs text-success">{ch.erPercent != null ? `${ch.erPercent}%` : '—'}</td>
                     <td className="px-4 py-3 font-mono text-xs text-accent">{ch.postsPerDay ?? '—'}</td>
-                    <td className="px-4 py-3"><Toggle checked={ch.isMonitored} onChange={()=>{}}/></td>
-                    <td className="px-4 py-3"><Toggle checked={ch.isParsing} onChange={()=>{}}/></td>
+                    <td className="px-4 py-3"><Toggle checked={ch.isMonitored} onChange={v=>handleToggle(ch.id,'isMonitored',v)}/></td>
+                    <td className="px-4 py-3"><Toggle checked={ch.isParsing} onChange={v=>handleToggle(ch.id,'isParsing',v)}/></td>
                     <td className="px-4 py-3">
                       <div className="flex gap-1">
                         <button className="btn-ghost text-xs px-2 py-1" onClick={() => handleParse(ch.id)}><Download size={12}/></button>

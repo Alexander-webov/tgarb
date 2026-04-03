@@ -192,7 +192,7 @@ agenda.define('warmup_cycle', async () => {
 
   const accounts = await prisma.tgAccount.findMany({
     where: {
-      status: { in: ['WARMING', 'OFFLINE'] },
+      status: { in: ['WARMING', 'ACTIVE', 'OFFLINE'] },
       sessionData: { not: null },
     },
   })
