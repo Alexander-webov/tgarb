@@ -1,32 +1,75 @@
 // src/lib/agenda.js
-// Клиент для добавления задач в очередь из Next.js API routes
-// НЕ запускает обработку - это делает воркер (workers/agenda.js)
+// Добавляет задачи напрямую в MongoDB через mongoose
 
-import Agenda from 'agenda'
+import mongoose from 'mongoose'
 
 const MONGODB_URL = process.env.MONGODB_URL || 'mongodb://mongo:27017/tgarb_jobs'
 
-let _agenda = null
+let connected = false
 
-async function getAgenda() {
-  if (_agenda) return _agenda
-  _agenda = new Agenda({
-    db: { address: MONGODB_URL, collection: 'jobs' },
-    // Не запускаем processEvery - только добавляем задачи
-  })
-  // НЕ вызываем agenda.start() - только подключаемся к MongoDB
-  await _agenda._db.connect()
-  return _agenda
+async function connect() {
+  if (connected && mongoose.connection.readyState === 1) return
+  await mongoose.connect(MONGODB_URL)
+  connected = true
 }
 
-// Добавить задачу для немедленного выполнения воркером
+// Схема совместима с Agenda.js формата
+const jobSchema = new mongoose.Schema({
+  name:           String,
+  data:           mongoose.Schema.Types.Mixed,
+  type:           { type: String, default: 'normal' },
+  priority:       { type: Number, default: 0 },
+  nextRunAt:      Date,
+  lastModifiedBy: String,
+  lockedAt:       Date,
+  lastRunAt:      Date,
+  lastFinishedAt: Date,
+  failCount:      { type: Number, default: 0 },
+  failedAt:       Date,
+}, { collection: 'jobs' })
+
+let JobModel = null
+
+function getModel() {
+  if (!JobModel) {
+    JobModel = mongoose.models.Job || mongoose.model('Job', jobSchema)
+  }
+  return JobModel
+}
+
 export async function scheduleNow(jobName, data = {}) {
-  const ag = await getAgenda()
-  return ag.now(jobName, data)
+  await connect()
+  const Job = getModel()
+  const job = await Job.create({
+    name: jobName,
+    data,
+    type: 'normal',
+    priority: 0,
+    nextRunAt: new Date(),
+    lockedAt: null,
+  })
+  console.log(`[agenda] queued: ${jobName}`, JSON.stringify(data))
+  return job
 }
 
-// Добавить задачу с задержкой
 export async function scheduleIn(jobName, when, data = {}) {
-  const ag = await getAgenda()
-  return ag.schedule(when, jobName, data)
+  await connect()
+  const Job = getModel()
+  const runAt = typeof when === 'string' ? parseWhen(when) : new Date(when)
+  return Job.create({
+    name: jobName,
+    data,
+    type: 'normal',
+    priority: 0,
+    nextRunAt: runAt,
+    lockedAt: null,
+  })
+}
+
+function parseWhen(str) {
+  const m = str.match(/(\d+)\s*(second|minute|hour)/)
+  if (!m) return new Date()
+  const n = parseInt(m[1])
+  const mult = m[2] === 'second' ? 1000 : m[2] === 'minute' ? 60000 : 3600000
+  return new Date(Date.now() + n * mult)
 }
