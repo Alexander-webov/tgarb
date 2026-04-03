@@ -2,7 +2,8 @@
 import { TelegramClient } from 'telegram'
 import { StringSession } from 'telegram/sessions/index.js'
 import { Api } from 'telegram/tl/index.js'
-import { SocksProxyAgent } from 'socks'
+import socksLib from 'socks'
+const { SocksProxyAgent } = socksLib
 import { prisma } from '../prisma.js'
 import { env } from '../env.js'
 import pino from 'pino'
