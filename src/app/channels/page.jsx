@@ -106,7 +106,7 @@ export default function ChannelsPage() {
     !search || c.username.includes(search.replace('@','')) || (c.title||'').toLowerCase().includes(search.toLowerCase())
   )
 
-  const activeAcc = accounts.find(a => ['ACTIVE', 'WARMING'].includes(a.status))
+  const activeAcc = accounts.find(a => ['ACTIVE', 'WARMING'].includes(a.status)) || accounts.find(a => a.sessionData)
 
   return (
     <Layout>
