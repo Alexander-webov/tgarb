@@ -213,6 +213,7 @@ export class TelegramParser {
       }
     } catch (err) {
       logger.error({ username, err: err.message }, 'Parse channel error')
+      throw err  // Re-throw so caller gets the real error
       return null
     }
   }
