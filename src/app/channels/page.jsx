@@ -4,6 +4,7 @@ import { Plus, Trash2, Download, Search, Radio, Info, RefreshCw, Users, CheckCir
 import toast from 'react-hot-toast'
 import { Layout, Topbar } from '@/components/layout/Layout'
 import { Modal, FormField, Badge, Toggle, Spinner, Empty, useWebSocket } from '@/components/ui'
+import { checkAccount } from '@/lib/accountCheck'
 
 const CAT_COLOR = { crypto:'blue', gambling:'red', arbitrage:'green', finance:'yellow', other:'purple' }
 const CAT_LABELS = { crypto:'Крипта', gambling:'Гемблинг', arbitrage:'Арбитраж', finance:'Финансы', other:'Другое' }
@@ -69,28 +70,28 @@ export default function ChannelsPage() {
   }
 
   const handleParse = async (id, username) => {
-    const acc = accounts.find(a => ['ACTIVE', 'WARMING'].includes(a.status))
-    if (!acc) { toast.error('Нет активных аккаунтов! Сначала подключи аккаунт во вкладке Аккаунты.'); return }
+    const check = checkAccount(accounts)
+    if (!check.ok) { toast.error(check.error); return }
     setParsing(p => ({ ...p, [id]: true }))
-    await fetch(`/api/channels/${id}/parse-members?account_id=${acc.id}&limit=5000`, { method: 'POST' })
-    toast.success(`Парсинг @${username} запущен. Это займёт 1-5 минут...`)
+    await fetch(`/api/channels/${id}/parse-members?account_id=${check.account.id}&limit=5000`, { method: 'POST' })
+    toast.success(`Парсинг @${username} запущен — займёт 1-5 минут`)
   }
 
   const handleFetchInfo = async (id, username) => {
-    const acc = accounts.find(a => ['ACTIVE', 'WARMING'].includes(a.status))
-    if (!acc) { toast.error('Нет активных аккаунтов!'); return }
+    const check = checkAccount(accounts)
+    if (!check.ok) { toast.error(check.error); return }
     setFetching(p => ({ ...p, [id]: true }))
     try {
-      const res = await fetch(`/api/channels/${id}/fetch-info?account_id=${acc.id}`, { method: 'POST' })
+      const res = await fetch(`/api/channels/${id}/fetch-info?account_id=${check.account.id}`, { method: 'POST' })
+      const data = await res.json()
       if (res.ok) {
-        const data = await res.json()
-        toast.success(`Данные @${username} обновлены: ${(data.subscribers/1000).toFixed(0)}K подписчиков`)
+        toast.success(`@${username}: ${data.subscribers ? (data.subscribers/1000).toFixed(0)+'K подписчиков' : 'данные обновлены'}`)
         load(false)
       } else {
-        toast.error('Не удалось получить данные канала')
+        toast.error(`Ошибка: ${data.error || 'не удалось получить данные'}`)
       }
-    } catch {
-      toast.error('Ошибка запроса')
+    } catch (e) {
+      toast.error('Ошибка запроса: ' + e.message)
     }
     setFetching(p => ({ ...p, [id]: false }))
   }
@@ -106,7 +107,8 @@ export default function ChannelsPage() {
     !search || c.username.includes(search.replace('@','')) || (c.title||'').toLowerCase().includes(search.toLowerCase())
   )
 
-  const activeAcc = accounts.find(a => ['ACTIVE', 'WARMING'].includes(a.status)) || accounts.find(a => a.sessionData)
+  const accCheck = checkAccount(accounts)
+  const activeAcc = accCheck.ok ? accCheck.account : null
 
   return (
     <Layout>
@@ -130,7 +132,7 @@ export default function ChannelsPage() {
             <div><span className="text-[#e8eaf0]">2. Обнови данные</span> — нажми 🔄 чтобы подтянуть подписчиков, ER, посты (требует активный аккаунт)</div>
             <div><span className="text-[#e8eaf0]">3. Спарси участников</span> — нажми ↓ чтобы собрать список участников для рассылки</div>
             <div><span className="text-[#e8eaf0]">Монитор</span> — включает автообновление данных раз в 2 часа. <span className="text-[#e8eaf0]">Парсинг</span> — автоматически парсит новых участников.</div>
-            {!activeAcc && <div className="text-danger font-bold mt-1">⚠️ Нет активных аккаунтов! Подключи аккаунт во вкладке «Аккаунты».</div>}
+            {!activeAcc && <div className="text-danger font-bold mt-1">⚠️ {accCheck.error}</div>}
           </div>
         </div>
 

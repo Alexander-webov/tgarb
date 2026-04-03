@@ -4,6 +4,7 @@ import { Plus, Play, Pause, Trash2, Send, Users, CheckCircle2, XCircle, Clock, C
 import toast from 'react-hot-toast'
 import { Layout, Topbar } from '@/components/layout/Layout'
 import { Modal, FormField, Badge, ProgressBar, Spinner, Empty, useWebSocket } from '@/components/ui'
+import { checkAccount } from '@/lib/accountCheck'
 
 const STATUS = {
   DRAFT:     { label: 'Черновик',   color: 'purple', hint: 'Кампания создана, но ещё не запущена' },
@@ -75,6 +76,8 @@ export default function Campaigns() {
   }
 
   const handleStart = async (id) => {
+    const check = checkAccount(accounts)
+    if (!check.ok) { toast.error(check.error); return }
     await fetch(`/api/campaigns/${id}/start`, { method: 'POST' })
     toast.success('Рассылка запущена! Воркер начнёт отправку в течение 10 сек.')
     setTimeout(() => load(false), 2000)

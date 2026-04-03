@@ -4,6 +4,7 @@ import { Flame, CheckCircle2, AlertTriangle, WifiOff, RefreshCw, Settings, Play,
 import toast from 'react-hot-toast'
 import { Layout, Topbar } from '@/components/layout/Layout'
 import { Badge, ProgressBar, Modal, Spinner, Empty, useWebSocket } from '@/components/ui'
+import { checkAccount } from '@/lib/accountCheck'
 
 const STATUS_META = {
   ACTIVE:  { label:'Активен', color:'green',  icon:CheckCircle2 },

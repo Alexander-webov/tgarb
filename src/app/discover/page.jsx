@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Search, Globe, Plus } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { checkAccount } from '@/lib/accountCheck'
 import { Layout, Topbar } from '@/components/layout/Layout'
 import { FormField, Badge, Spinner, Empty } from '@/components/ui'
 
@@ -28,6 +29,9 @@ export default function Discover() {
   }, [])
 
   const handleSearch = async () => {
+    const check = checkAccount(accounts)
+    if (!check.ok) { toast.error(check.error); return }
+
     if (!query.trim() || !accountId) { toast.error('Выбери аккаунт и введи запрос'); return }
     setLoading(true)
     const res = await fetch(`/api/channels/discover/search?query=${encodeURIComponent(query)}&account_id=${accountId}`)
