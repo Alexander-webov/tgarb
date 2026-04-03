@@ -9,20 +9,13 @@ export async function GET() {
     }
     const col = mongoose.connection.db.collection('jobs')
     
-    // Show all pending jobs
-    const pending = await col.find({ 
-      lockedAt: null,
-      $or: [
-        { nextRunAt: { $lte: new Date() } },
-        { nextRunAt: null }
-      ]
-    }).sort({ nextRunAt: 1 }).limit(5).toArray()
-    
+    // Show ALL jobs sorted by insertion time
+    const all = await col.find({}).sort({ _id: -1 }).limit(5).toArray()
     const total = await col.countDocuments()
     
     return NextResponse.json({ 
       total,
-      pending: pending.map(j => ({
+      latest5: all.map(j => ({
         _id: j._id,
         name: j.name,
         data: j.data,
