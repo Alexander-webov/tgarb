@@ -70,10 +70,11 @@ class AccountPool {
       logger.error({ accountId, err: err.message }, 'Connection failed')
 
       if (err.message?.includes('AUTH_KEY_UNREGISTERED') ||
-          err.message?.includes('SESSION_REVOKED')) {
+          err.message?.includes('SESSION_REVOKED') ||
+          err.message?.includes('USER_DEACTIVATED')) {
         await prisma.tgAccount.update({
           where: { id: accountId },
-          data: { status: 'BANNED' },
+          data: { status: 'BANNED', banReason: err.message },
         })
       }
       return null

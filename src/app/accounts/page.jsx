@@ -127,6 +127,22 @@ export default function Accounts() {
                       {acc.isWarmed && <Badge color="green">Прогрет</Badge>}
                     </div>
                     <div className="text-xs font-mono text-muted mb-2">{acc.phone} · Лимит {acc.dailyLimit}/д</div>
+                      {acc.status === 'BANNED' && (
+                        <div className="text-xs text-danger bg-danger/10 border border-danger/20 rounded px-2 py-1 mb-2 flex items-center gap-2">
+                          🚫 <span>Забанен{acc.banReason ? `: ${acc.banReason}` : ' — причина неизвестна'}</span>
+                          <span className="ml-auto text-[10px] opacity-60">Импортируй новый аккаунт</span>
+                        </div>
+                      )}
+                      {acc.status === 'LIMITED' && (
+                        <div className="text-xs text-yellow-400 bg-yellow-400/10 border border-yellow-400/20 rounded px-2 py-1 mb-2">
+                          ⚠️ Ограничен SpamBot — подожди 24ч или замени аккаунт
+                        </div>
+                      )}
+                      {acc.status === 'OFFLINE' && (
+                        <div className="text-xs text-muted bg-surface2 rounded px-2 py-1 mb-2">
+                          💡 Нажми кнопку Wi-Fi чтобы подключить аккаунт к Telegram
+                        </div>
+                      )}
                     <div className="flex items-center gap-2">
                       <ProgressBar value={acc.sentToday} max={acc.dailyLimit} color={barColor} className="flex-1"/>
                       <span className="text-[10px] font-mono text-muted">{acc.sentToday}/{acc.dailyLimit}</span>

@@ -4,15 +4,22 @@ import { prisma } from '@/lib/prisma'
 
 export async function GET(_, { params }) {
   const id = Number(params.id)
-  const channel = await prisma.channel.findUnique({ where: { id } })
-  return NextResponse.json(channel)
+  const ch = await prisma.channel.findUnique({
+    where: { id },
+    include: { _count: { select: { parsedUsers: true } } }
+  })
+  return NextResponse.json({ ...ch, parsedCount: ch._count.parsedUsers })
 }
 
 export async function PATCH(req, { params }) {
   const id = Number(params.id)
   const body = await req.json()
-  const channel = await prisma.channel.update({ where: { id }, data: body })
-  return NextResponse.json(channel)
+  const ch = await prisma.channel.update({
+    where: { id },
+    data: body,
+    include: { _count: { select: { parsedUsers: true } } }
+  })
+  return NextResponse.json({ ...ch, parsedCount: ch._count.parsedUsers })
 }
 
 export async function DELETE(_, { params }) {

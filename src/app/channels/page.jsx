@@ -69,15 +69,15 @@ export default function ChannelsPage() {
   }
 
   const handleParse = async (id, username) => {
-    const acc = accounts.find(a => a.status === 'ACTIVE')
-    if (!acc) { toast.error('Нет активных аккаунтов! Сначала подключи аккаунт.'); return }
+    const acc = accounts.find(a => ['ACTIVE', 'WARMING'].includes(a.status))
+    if (!acc) { toast.error('Нет активных аккаунтов! Сначала подключи аккаунт во вкладке Аккаунты.'); return }
     setParsing(p => ({ ...p, [id]: true }))
     await fetch(`/api/channels/${id}/parse-members?account_id=${acc.id}&limit=5000`, { method: 'POST' })
     toast.success(`Парсинг @${username} запущен. Это займёт 1-5 минут...`)
   }
 
   const handleFetchInfo = async (id, username) => {
-    const acc = accounts.find(a => a.status === 'ACTIVE')
+    const acc = accounts.find(a => ['ACTIVE', 'WARMING'].includes(a.status))
     if (!acc) { toast.error('Нет активных аккаунтов!'); return }
     setFetching(p => ({ ...p, [id]: true }))
     try {
@@ -106,7 +106,7 @@ export default function ChannelsPage() {
     !search || c.username.includes(search.replace('@','')) || (c.title||'').toLowerCase().includes(search.toLowerCase())
   )
 
-  const activeAcc = accounts.find(a => a.status === 'ACTIVE')
+  const activeAcc = accounts.find(a => ['ACTIVE', 'WARMING'].includes(a.status))
 
   return (
     <Layout>
