@@ -102,7 +102,20 @@ export default function Campaigns() {
       : [...f.targetChannels, u]
   }))
 
-  const toggleExpand = (id) => setExpanded(p => ({ ...p, [id]: !p[id] }))
+  const [dbLogs, setDbLogs] = useState({})
+
+  const toggleExpand = async (id) => {
+    const nowOpen = !expanded[id]
+    setExpanded(p => ({ ...p, [id]: nowOpen }))
+    if (nowOpen) {
+      // Load real stats from DB
+      const res = await fetch(`/api/campaigns/stats?id=${id}`)
+      if (res.ok) {
+        const data = await res.json()
+        setDbLogs(p => ({ ...p, [id]: data }))
+      }
+    }
+  }
 
   return (
     <Layout>
@@ -224,27 +237,50 @@ export default function Campaigns() {
                       Лог отправки
                       {camp.status === 'RUNNING' && <span className="text-success">● Обновляется автоматически</span>}
                     </div>
-                    {logs.length === 0 ? (
-                      <div className="text-xs font-mono text-muted text-center py-4">
-                        {camp.status === 'RUNNING'
-                          ? 'Ожидаем первые события от воркера...'
-                          : camp.status === 'DRAFT'
-                          ? 'Запусти рассылку чтобы увидеть логи'
-                          : 'Логи недоступны для завершённых кампаний'}
+                    {/* Stats by account */}
+                    {dbLogs[camp.id]?.byAccount && Object.keys(dbLogs[camp.id].byAccount).length > 0 && (
+                      <div className="mb-3">
+                        <div className="text-[10px] font-mono text-muted uppercase mb-2">Статистика по аккаунтам:</div>
+                        <div className="space-y-1">
+                          {Object.entries(dbLogs[camp.id].byAccount).map(([phone, stat]) => (
+                            <div key={phone} className="flex items-center gap-3 text-[11px] font-mono bg-surface rounded px-3 py-1.5">
+                              <span className="text-muted">{phone}</span>
+                              <span className="text-success">✅ {stat.sent}</span>
+                              {stat.failed > 0 && <span className="text-danger">❌ {stat.failed}</span>}
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    ) : (
+                    )}
+                    {/* Recent log */}
+                    {(logs.length > 0 || dbLogs[camp.id]?.recentLog?.length > 0) ? (
                       <div className="space-y-1 max-h-48 overflow-y-auto">
-                        {logs.map((log, i) => (
+                        {(dbLogs[camp.id]?.recentLog || []).map((log, i) => (
                           <div key={i} className="flex items-center gap-3 text-[11px] font-mono">
+                            <span className="text-muted">{new Date(log.time).toLocaleTimeString('ru')}</span>
+                            {log.delivered ? <CheckCircle2 size={11} className="text-success"/> : <XCircle size={11} className="text-danger"/>}
+                            <span className="text-muted">{log.account}</span>
+                            {log.error && <span className="text-danger">{log.error}</span>}
+                          </div>
+                        ))}
+                        {logs.map((log, i) => (
+                          <div key={`live-${i}`} className="flex items-center gap-3 text-[11px] font-mono">
                             <span className="text-muted">{log.time}</span>
                             {log.status === 'sent' && <CheckCircle2 size={11} className="text-success"/>}
                             {log.status === 'failed' && <XCircle size={11} className="text-danger"/>}
-                            {log.status === 'waiting' && <Clock size={11} className="text-yellow-400"/>}
-                            <span className={log.status === 'sent' ? 'text-success' : log.status === 'failed' ? 'text-danger' : 'text-muted'}>
-                              {log.message || `Отправлено: ${log.sent}, Ошибок: ${log.failed}`}
+                            <span className={log.status === 'sent' ? 'text-success' : 'text-danger'}>
+                              {log.message}
                             </span>
                           </div>
                         ))}
+                      </div>
+                    ) : (
+                      <div className="text-xs font-mono text-muted text-center py-4">
+                        {camp.status === 'RUNNING'
+                          ? '⏳ Ожидаем первые события от воркера...'
+                          : camp.status === 'DRAFT'
+                          ? '▶️ Запусти рассылку чтобы увидеть логи'
+                          : 'Нет данных'}
                       </div>
                     )}
                     <div className="mt-3 pt-3 border-t border-border/50 text-[10px] font-mono text-muted">

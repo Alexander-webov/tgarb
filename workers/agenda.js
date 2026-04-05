@@ -33,7 +33,7 @@ const agenda = new Agenda({
 // ══════════════════════════════════════════════════════════
 
 // ── Рассылка кампании ─────────────────────────────────────
-agenda.define('run_campaign', { concurrency: 3 }, async (job) => {
+agenda.define('run_campaign', { concurrency: 1 }, async (job) => {
   const { campaignId } = job.attrs.data
   logger.info({ campaignId }, 'Running campaign')
 
@@ -48,66 +48,123 @@ agenda.define('run_campaign', { concurrency: 3 }, async (job) => {
 
   if (!campaign || campaign.status !== 'RUNNING') return
 
+  // Get already sent recipients to avoid duplicates
+  const alreadySent = await prisma.sentMessage.findMany({
+    where: { campaignId },
+    select: { recipientId: true },
+  })
+  const sentIds = new Set(alreadySent.map(s => s.recipientId.toString()))
+
   const recipients = await prisma.parsedUser.findMany({
     where: { channel: { username: { in: campaign.targetChannels } } },
-    take: campaign.maxRecipients || 10000,
+    take: (campaign.maxRecipients || 10000) + alreadySent.length,
   })
 
-  let sent = 0, failed = 0
-  const accounts = campaign.accounts.map(a => a.account)
-  let accIdx = 0
+  // Filter out already sent
+  const pending = recipients.filter(u => !sentIds.has(u.tgUserId.toString()))
 
-  for (const user of recipients) {
-    // Rotate accounts
-    const account = accounts[accIdx % accounts.length]
-    if (!account || account.sentToday >= account.dailyLimit) {
-      accIdx++
-      continue
+  if (pending.length === 0) {
+    await prisma.campaign.update({ where: { id: campaignId }, data: { status: 'DONE' } })
+    await notify('campaign_done', `Рассылка «${campaign.name}» завершена — все получатели охвачены`, { campaignId })
+    return
+  }
+
+  // Get active accounts - use campaign accounts or all active
+  let accounts = campaign.accounts.map(a => a.account).filter(a => a.status === 'ACTIVE')
+  if (accounts.length === 0) {
+    // Fall back to all active accounts
+    accounts = await prisma.tgAccount.findMany({ where: { status: 'ACTIVE', sessionData: { not: null } } })
+  }
+  if (accounts.length === 0) {
+    await prisma.campaign.update({ where: { id: campaignId }, data: { status: 'PAUSED' } })
+    await notify('info', `Рассылка «${campaign.name}» приостановлена — нет активных аккаунтов`, { campaignId })
+    return
+  }
+
+  let sent = campaign.sentCount || 0
+  let failed = campaign.failedCount || 0
+  let accIdx = 0
+  let consecutiveFails = 0
+
+  for (const user of pending) {
+    // Re-check campaign status (could be paused externally)
+    const currentCampaign = await prisma.campaign.findUnique({ where: { id: campaignId }, select: { status: true } })
+    if (!currentCampaign || currentCampaign.status !== 'RUNNING') {
+      logger.info({ campaignId }, 'Campaign stopped externally')
+      break
     }
 
-    // Random delay
-    const delay = account.delayMin + Math.random() * (account.delayMax - account.delayMin)
+    // Smart account rotation - find next available account
+    let account = null
+    let attempts = 0
+    while (attempts < accounts.length) {
+      const candidate = accounts[accIdx % accounts.length]
+      // Refresh account status from DB
+      const fresh = await prisma.tgAccount.findUnique({ where: { id: candidate.id } })
+      if (fresh && fresh.status === 'ACTIVE' && fresh.sentToday < fresh.dailyLimit) {
+        account = fresh
+        break
+      }
+      accIdx++
+      attempts++
+    }
+
+    if (!account) {
+      logger.warn({ campaignId }, 'All accounts at daily limit or inactive — stopping')
+      await prisma.campaign.update({ where: { id: campaignId }, data: { status: 'PAUSED', sentCount: sent, failedCount: failed } })
+      await notify('info', `Рассылка «${campaign.name}» приостановлена — все аккаунты достигли дневного лимита. Продолжится завтра.`, { campaignId })
+      break
+    }
+
+    // Random delay between messages (use campaign setting + jitter)
+    const baseDelay = campaign.delayBetween || 30
+    const jitter = Math.random() * 15 - 7  // ±7 seconds
+    const delay = Math.max(10, baseDelay + jitter)
     await new Promise(r => setTimeout(r, delay * 1000))
 
+    // Send message
     const result = await sender.sendDM(account.id, user.tgUserId, campaign.messageText)
 
     if (result.ok) {
       sent++
-      await prisma.tgAccount.update({
-        where: { id: account.id },
-        data: { sentToday: { increment: 1 } },
-      })
+      consecutiveFails = 0
+      await prisma.tgAccount.update({ where: { id: account.id }, data: { sentToday: { increment: 1 } } })
       await prisma.sentMessage.create({
-        data: {
-          campaignId, accountId: account.id,
-          recipientId: user.tgUserId, isDelivered: true,
-        },
+        data: { campaignId, accountId: account.id, recipientId: user.tgUserId, isDelivered: true },
       })
+      // Broadcast live progress
+      wsManager.broadcast('campaign_progress', {
+        campaignId, sent, failed,
+        status: 'sent',
+        message: `✅ Отправлено ${sent} сообщений (аккаунт ${account.phone})`
+      }).catch(() => {})
     } else {
       failed++
+      consecutiveFails++
       await prisma.sentMessage.create({
-        data: {
-          campaignId, accountId: account.id,
-          recipientId: user.tgUserId, isDelivered: false,
-          error: result.error || 'unknown',
-        },
+        data: { campaignId, accountId: account.id, recipientId: user.tgUserId, isDelivered: false, error: result.error || 'unknown' },
       })
 
       if (result.peerFlood) {
-        await prisma.tgAccount.update({
-          where: { id: account.id },
-          data: { status: 'LIMITED' },
-        })
-        const { notifyFloodWait } = await import('../src/lib/notifications.js')
-        await notifyFloodWait(account.phone, 'PeerFlood - переключаем аккаунт').catch(() => {})
-        accIdx++ // Smart rotation - move to next account
-      }
-      if (result.floodWait) {
-        const { notifyFloodWait } = await import('../src/lib/notifications.js')
-        await notifyFloodWait(account.phone, result.floodWait).catch(() => {})
-        // Smart rotation - switch account instead of waiting
+        // PeerFlood = account is spammy, rotate immediately
+        await prisma.tgAccount.update({ where: { id: account.id }, data: { status: 'LIMITED' } })
+        await notify('limited', `Аккаунт ${account.phone} получил PeerFlood во время рассылки «${campaign.name}». Переключаем.`, { campaignId, accountId: account.id })
         accIdx++
-        // Continue with next account immediately
+      } else if (result.floodWait) {
+        // FloodWait = rotate account, don't wait
+        await notify('limited', `Аккаунт ${account.phone}: FloodWait ${result.floodWait}с. Переключаем на следующий.`, { campaignId })
+        accIdx++
+      } else if (result.userPrivacy) {
+        // User has privacy settings - skip silently, not an error
+        failed--
+        await prisma.sentMessage.deleteMany({ where: { campaignId, recipientId: user.tgUserId } })
+      }
+
+      // Stop if too many consecutive failures
+      if (consecutiveFails >= 5) {
+        await prisma.campaign.update({ where: { id: campaignId }, data: { status: 'PAUSED', sentCount: sent, failedCount: failed } })
+        await notify('info', `Рассылка «${campaign.name}» приостановлена — 5 ошибок подряд. Проверь аккаунты.`, { campaignId })
+        break
       }
     }
 

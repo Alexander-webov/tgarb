@@ -121,14 +121,27 @@ export class TelegramSender {
 
   async sendDM(accountId, userId, text) {
     const client = await accountPool.getClient(accountId)
-    if (!client) throw new Error('No client available')
+    if (!client) return { ok: false, error: 'no_client' }
 
     try {
       await client.sendMessage(userId, { message: text })
       return { ok: true }
     } catch (err) {
-      if (err.message?.includes('FLOOD_WAIT_')) {
-        const seconds = parseInt(err.message.match(/FLOOD_WAIT_(\d+)/)?.[1] || '60')
+      const msg = err.message || ''
+      if (msg.includes('FLOOD_WAIT_')) {
+        const seconds = parseInt(msg.match(/FLOOD_WAIT_(\d+)/)?.[1] || '60')
+        return { ok: false, floodWait: seconds }
+      }
+      if (msg.includes('PEER_FLOOD')) return { ok: false, peerFlood: true, error: msg }
+      if (msg.includes('USER_PRIVACY_RESTRICTED') || msg.includes('privacy')) return { ok: false, userPrivacy: true }
+      if (msg.includes('USER_BANNED_IN_CHANNEL')) return { ok: false, error: 'banned_in_channel' }
+      if (msg.includes('INPUT_USER_DEACTIVATED')) return { ok: false, error: 'user_deactivated' }
+      if (msg.includes('AUTH_KEY') || msg.includes('SESSION_REVOKED')) {
+        await prisma.tgAccount.update({ where: { id: accountId }, data: { status: 'BANNED', banReason: msg } })
+        return { ok: false, error: 'account_banned', ban: true }
+      }
+      if (msg.includes('FLOOD_WAIT_')) {
+        const seconds = parseInt(msg.match(/FLOOD_WAIT_(\d+)/)?.[1] || '60')
         return { ok: false, floodWait: seconds }
       }
       if (err.message?.includes('PEER_FLOOD')) {
