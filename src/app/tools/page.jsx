@@ -54,6 +54,7 @@ export default function Tools() {
   const [plResult,  setPlResult]  = useState(null)
 
   // Boost state
+  const [activeAccountId, setActiveAccountId] = useState('')
   const [boostOpen,   setBoostOpen]   = useState(false)
   const [boostForm,   setBoostForm]   = useState({ name:'', type:'reactions', target:'', postId:'', emoji:'❤️', count:100, accountIds:[] })
 
@@ -70,9 +71,11 @@ export default function Tools() {
     const list = phones.split(/[\n,]/).map(p=>p.trim()).filter(Boolean)
     if (!list.length) { toast.error('Введи номера телефонов'); return }
     setLoading(true)
+    const accId = activeAccountId || accCheck.account?.id
+    if (!accId) { toast.error('Выбери аккаунт'); setLoading(false); return }
     const res = await fetch('/api/numcheck', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ phones: list, accountId: accCheck.account.id })
+      body: JSON.stringify({ phones: list, accountId: accId })
     })
     const data = await res.json()
     setNumResults(data)
@@ -124,7 +127,7 @@ export default function Tools() {
     if (!clonerSrc || !clonerDst || !clonerAccId) { toast.error('Заполни все поля'); return }
     const res = await fetch('/api/cloner', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ sourceChat: clonerSrc, targetChat: clonerDst, accountId: +clonerAccId, limit: clonerLimit })
+      body: JSON.stringify({ sourceChat: clonerSrc, targetChat: clonerDst, accountId: +(clonerAccId||activeAccountId), limit: clonerLimit })
     })
     const data = await res.json()
     toast.success(data.message || 'Клонирование запущено')
@@ -135,7 +138,7 @@ export default function Tools() {
     setLoading(true)
     const res = await fetch('/api/create-chat', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ title: chatTitle, about: chatAbout, username: chatUsername, isChannel: chatIsChannel, accountId: +chatAccId })
+      body: JSON.stringify({ title: chatTitle, about: chatAbout, username: chatUsername, isChannel: chatIsChannel, accountId: +(chatAccId||activeAccountId) })
     })
     const data = await res.json()
     setLoading(false)
@@ -151,9 +154,11 @@ export default function Tools() {
     if (!ids.length) { toast.error('Укажи ID постов'); return }
     if (!plAccIds.length) { toast.error('Выбери аккаунты'); return }
     setLoading(true)
+    const accIds = plAccIds.length ? plAccIds : (activeAccountId ? [+activeAccountId] : [])
+    if (!accIds.length) { toast.error('Выбери аккаунты или укажи аккаунт выше'); setLoading(false); return }
     const res = await fetch('/api/postlikes', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({ channel:plChannel, postIds:ids, emoji:plEmoji, accountIds:plAccIds })
+      body:JSON.stringify({ channel:plChannel, postIds:ids, emoji:plEmoji, accountIds:accIds })
     })
     const data = await res.json()
     setPlResult(data); setLoading(false)
@@ -197,6 +202,19 @@ export default function Tools() {
               <t.icon size={13}/> {t.label}
             </button>
           ))}
+        </div>
+
+        {/* Global account selector */}
+        <div className="card p-4 flex items-center gap-3 mb-2">
+          <span className="text-xs font-mono text-muted flex-shrink-0">Аккаунт для операций:</span>
+          <select className="input text-sm py-1.5 flex-1 max-w-xs" value={activeAccountId} onChange={e=>setActiveAccountId(+e.target.value)}>
+            <option value="">— выбрать аккаунт —</option>
+            {activeAccounts.map(a=>(
+              <option key={a.id} value={a.id}>{a.phone} {a.firstName?`(${a.firstName})`:''}</option>
+            ))}
+          </select>
+          {!activeAccountId && <span className="text-xs text-danger">⚠️ Выбери аккаунт для работы</span>}
+          {activeAccountId && <span className="text-xs text-success">✅ Аккаунт выбран</span>}
         </div>
 
         {/* Number Checker */}
