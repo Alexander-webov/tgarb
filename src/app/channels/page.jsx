@@ -18,6 +18,9 @@ export default function ChannelsPage() {
   const [parsing,   setParsing]   = useState({})
   const [fetching,  setFetching]  = useState({})
   const [errors,    setErrors]    = useState({})
+  const [filterOpen, setFilterOpen] = useState(null) // channelId
+  const [filterOpts, setFilterOpts] = useState({ hasAvatar: 'any', minDaysOnline: '', sex: 'any' })
+  const [filterCount, setFilterCount] = useState(null)
   const [form,      setForm]      = useState({ username:'', category:'', isMonitored:true, isParsing:false })
 
   useWebSocket({ onEvent: useCallback((ev, data) => {
@@ -269,6 +272,10 @@ export default function ChannelsPage() {
                           title="Спарсить участников канала (нужен активный аккаунт)">
                           {parsing[ch.id] ? <Clock size={12}/> : <Download size={12}/>}
                         </button>
+                        {(ch.parsedCount||0) > 0 && (
+                          <button className="btn-ghost text-xs px-2 py-1.5" title="Фильтры базы"
+                            onClick={()=>setFilterOpen(ch.id)}>🔍</button>
+                        )}
                         <button
                           className="btn-ghost text-xs px-2 py-1.5 hover:border-danger hover:text-danger"
                           onClick={() => handleDelete(ch.id)}
@@ -320,6 +327,49 @@ export default function ChannelsPage() {
           <Plus size={14}/> Добавить канал
         </button>
       </Modal>
+    {/* Parser Filter Modal */}
+      {filterOpen && (() => {
+        const ch = channels.find(c=>c.id===filterOpen)
+        return (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+            <div className="card w-full max-w-md p-6">
+              <div className="text-base font-black mb-2">Фильтры базы @{ch?.username}</div>
+              <div className="text-xs text-muted mb-5">Всего: {ch?.parsedCount||0} пользователей</div>
+              <div className="space-y-4 mb-6">
+                <FormField label="Аватарка">
+                  <select className="input" value={filterOpts.hasAvatar} onChange={e=>setFilterOpts({...filterOpts,hasAvatar:e.target.value})}>
+                    <option value="any">Любые</option>
+                    <option value="yes">Только с аватаркой</option>
+                    <option value="no">Только без аватарки</option>
+                  </select>
+                </FormField>
+                <FormField label="Последний онлайн (дней назад, не позже)">
+                  <input className="input" type="number" placeholder="7 = был онлайн за 7 дней"
+                    value={filterOpts.minDaysOnline} onChange={e=>setFilterOpts({...filterOpts,minDaysOnline:e.target.value})}/>
+                </FormField>
+              </div>
+              <div className="flex gap-3">
+                <button className="btn-primary flex-1" onClick={async()=>{
+                  const params = new URLSearchParams({ channelId: filterOpen })
+                  if (filterOpts.hasAvatar !== 'any') params.set('hasAvatar', filterOpts.hasAvatar === 'yes' ? '1' : '0')
+                  if (filterOpts.minDaysOnline) params.set('maxDaysOffline', filterOpts.minDaysOnline)
+                  const res = await fetch(`/api/channels/filtered-users?${params}`)
+                  const data = await res.json()
+                  setFilterCount(data.count)
+                }}>
+                  Применить фильтр
+                </button>
+                <button className="btn-ghost" onClick={()=>{setFilterOpen(null);setFilterCount(null)}}>Закрыть</button>
+              </div>
+              {filterCount !== null && (
+                <div className="mt-4 text-sm text-center font-bold text-success">
+                  Подходит: {filterCount} пользователей из {ch?.parsedCount||0}
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      })()}
     </Layout>
   )
 }

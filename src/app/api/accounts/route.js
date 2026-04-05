@@ -26,3 +26,16 @@ export async function POST(req) {
   })
   return NextResponse.json(account, { status: 201 })
 }
+
+export async function PATCH(req) {
+  const { ids, role, folder, geo } = await req.json()
+  if (!ids?.length) return (await import('next/server')).NextResponse.json({ error: 'ids required' }, { status: 400 })
+  const { prisma } = await import('@/lib/prisma')
+  const { NextResponse } = await import('next/server')
+  const data = {}
+  if (role !== undefined) data.role = role
+  if (folder !== undefined) data.folder = folder
+  if (geo !== undefined) data.geo = geo
+  await prisma.tgAccount.updateMany({ where: { id: { in: ids } }, data })
+  return NextResponse.json({ ok: true, updated: ids.length })
+}

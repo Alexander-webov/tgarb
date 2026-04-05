@@ -32,6 +32,9 @@ model TgAccount {
   user         User?     @relation("UserAccounts", fields: [userId], references: [id])
   lastActive   DateTime?
   banReason    String?
+  role         String?   // Роль: под_рассылку, инвайт, прогрев и т.д.
+  folder       String?   // Папка для группировки
+  geo          String?   // Страна: RU, US, VN и т.д.
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 

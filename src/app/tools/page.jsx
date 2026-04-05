@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { Hash, UserCheck, Zap, Copy, Plus, Play, Trash2, Info, Shield, GitBranch, MessageSquare } from 'lucide-react'
+import { Hash, UserCheck, Zap, Copy, Plus, Play, Trash2, Info, Shield, GitBranch, MessageSquare, Heart } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Layout, Topbar } from '@/components/layout/Layout'
 import { Modal, FormField, Badge, Spinner } from '@/components/ui'
@@ -45,6 +45,13 @@ export default function Tools() {
   const [chatUsername,setChatUsername]= useState('')
   const [chatIsChannel,setChatIsChannel]= useState(false)
   const [chatAccId,   setChatAccId]   = useState('')
+
+  // Post likes state
+  const [plChannel, setPlChannel] = useState('')
+  const [plPostIds, setPlPostIds] = useState('')
+  const [plEmoji,   setPlEmoji]   = useState('❤️')
+  const [plAccIds,  setPlAccIds]  = useState([])
+  const [plResult,  setPlResult]  = useState(null)
 
   // Boost state
   const [boostOpen,   setBoostOpen]   = useState(false)
@@ -136,6 +143,23 @@ export default function Tools() {
     else toast.error(data.error)
   }
 
+  const runPostLikes = async () => {
+    const check = accCheck
+    if (!check.ok) { toast.error(check.error); return }
+    if (!plChannel) { toast.error('Укажи канал'); return }
+    const ids = plPostIds.split(/[\n,]/).map(s=>s.trim()).filter(Boolean).map(Number)
+    if (!ids.length) { toast.error('Укажи ID постов'); return }
+    if (!plAccIds.length) { toast.error('Выбери аккаунты'); return }
+    setLoading(true)
+    const res = await fetch('/api/postlikes', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ channel:plChannel, postIds:ids, emoji:plEmoji, accountIds:plAccIds })
+    })
+    const data = await res.json()
+    setPlResult(data); setLoading(false)
+    toast.success(`✅ Лайков поставлено: ${data.done}, ошибок: ${data.failed}`)
+  }
+
   const createBoost = async () => {
     const res = await fetch('/api/boost', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(boostForm)})
     if (res.ok) { toast.success('Задача создана'); setBoostOpen(false); fetch('/api/boost').then(r=>r.json()).then(d=>setBoosts(d)) }
@@ -157,6 +181,7 @@ export default function Tools() {
     { id:'cloner',    label:'Клонер',            icon:Copy },
     { id:'creator',   label:'Создать чат/канал', icon:Plus },
     { id:'boost',     label:'Накрутка',          icon:Zap },
+    { id:'postlikes',  label:'Лайки постов',      icon:Heart },
   ]
 
   return (
@@ -422,6 +447,52 @@ export default function Tools() {
           </div>
         )}
       </div>
+
+      {/* Post Likes */}
+      {tab === 'postlikes' && (
+        <div className="space-y-4 max-w-2xl">
+          <div className="bg-accent/5 border border-accent/20 rounded-xl p-4 text-xs text-muted">
+            <span className="text-[#e8eaf0] font-bold">Лайки постов</span> — массово ставит реакции на конкретные посты канала с нескольких аккаунтов. Укажи username канала и ID постов (можно несколько).
+          </div>
+          <FormField label="Канал (@username)">
+            <input className="input" placeholder="@mychannel" value={plChannel} onChange={e=>setPlChannel(e.target.value)}/>
+          </FormField>
+          <FormField label="ID постов (по одному на строке)">
+            <textarea className="input resize-none h-24 font-mono text-sm" placeholder="123&#10;124&#10;125" value={plPostIds} onChange={e=>setPlPostIds(e.target.value)}/>
+          </FormField>
+          <FormField label="Эмодзи реакции">
+            <div className="flex gap-2 flex-wrap">
+              {['❤️','👍','🔥','🎉','😎','💯','🤩','👏'].map(e=>(
+                <button key={e} onClick={()=>setPlEmoji(e)}
+                  className={`text-xl px-3 py-2 rounded-xl border transition-all ${plEmoji===e?'border-accent bg-accent/10':'border-border hover:bg-surface2'}`}>
+                  {e}
+                </button>
+              ))}
+            </div>
+          </FormField>
+          <FormField label={`Аккаунты (${plAccIds.length} выбрано)`}>
+            <div className="border border-border rounded-lg max-h-36 overflow-y-auto divide-y divide-border">
+              {activeAccounts.map(a=>(
+                <label key={a.id} className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-surface2">
+                  <input type="checkbox" className="accent-accent" checked={plAccIds.includes(a.id)}
+                    onChange={()=>setPlAccIds(p=>p.includes(a.id)?p.filter(x=>x!==a.id):[...p,a.id])}/>
+                  <span className="text-xs font-mono">{a.phone}</span>
+                </label>
+              ))}
+            </div>
+          </FormField>
+          <button className="btn-primary" onClick={runPostLikes} disabled={loading}>
+            {loading?'⏳ Ставим лайки...':<><Heart size={14}/> Поставить лайки</>}
+          </button>
+          {plResult && (
+            <div className="card p-4 font-mono text-sm space-y-1">
+              <div>✅ Успешно: <b className="text-success">{plResult.done}</b></div>
+              <div>❌ Ошибок: <b className="text-danger">{plResult.failed}</b></div>
+              <div className="text-[11px] text-muted mt-2">По постам: {Object.entries(plResult.byPost||{}).map(([id,c])=>`#${id}: ${c}`).join(', ')}</div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Boost Modal */}
       <Modal open={boostOpen} onClose={()=>setBoostOpen(false)} title="Новая задача накрутки">
