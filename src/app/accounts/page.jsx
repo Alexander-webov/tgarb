@@ -47,8 +47,16 @@ export default function Accounts() {
   }
 
   const handleConnect = async (id) => {
-    await fetch(`/api/accounts/${id}/connect`, { method: 'POST' })
-    toast.success('Подключение...'); setTimeout(load, 2000)
+    toast.loading('Подключаем к Telegram...', { id: 'connect' })
+    const res = await fetch(`/api/accounts/${id}/connect`, { method: 'POST' })
+    const data = await res.json()
+    toast.dismiss('connect')
+    if (res.ok) {
+      toast.success(`✅ ${data.phone} подключён!`)
+    } else {
+      toast.error(data.message || 'Ошибка подключения', { duration: 8000 })
+    }
+    setTimeout(load, 1500)
   }
 
   const handleUpload = async (id, file) => {

@@ -17,6 +17,7 @@ export default function ChannelsPage() {
   const [search,    setSearch]    = useState('')
   const [parsing,   setParsing]   = useState({})
   const [fetching,  setFetching]  = useState({})
+  const [errors,    setErrors]    = useState({})
   const [form,      setForm]      = useState({ username:'', category:'', isMonitored:true, isParsing:false })
 
   useWebSocket({ onEvent: useCallback((ev, data) => {
@@ -71,15 +72,33 @@ export default function ChannelsPage() {
 
   const handleParse = async (id, username) => {
     const check = checkAccount(accounts)
-    if (!check.ok) { toast.error(check.error); return }
+    if (!check.ok) {
+      setErrors(p => ({ ...p, [id]: check.error }))
+      toast.error(check.error, { duration: 6000 })
+      return
+    }
+    setErrors(p => ({ ...p, [id]: null }))
     setParsing(p => ({ ...p, [id]: true }))
-    await fetch(`/api/channels/${id}/parse-members?account_id=${check.account.id}&limit=5000`, { method: 'POST' })
-    toast.success(`Парсинг @${username} запущен — займёт 1-5 минут`)
+    const res = await fetch(`/api/channels/${id}/parse-members?account_id=${check.account.id}&limit=5000`, { method: 'POST' })
+    const data = await res.json()
+    if (res.ok) {
+      toast.success(data.message || `Парсинг @${username} запущен — займёт 1-5 минут`)
+    } else {
+      const errMsg = data.error || 'Ошибка парсинга'
+      setErrors(p => ({ ...p, [id]: errMsg }))
+      toast.error(errMsg, { duration: 8000 })
+      setParsing(p => ({ ...p, [id]: false }))
+    }
   }
 
   const handleFetchInfo = async (id, username) => {
     const check = checkAccount(accounts)
-    if (!check.ok) { toast.error(check.error); return }
+    if (!check.ok) {
+      setErrors(p => ({ ...p, [id]: check.error }))
+      toast.error(check.error, { duration: 6000 })
+      return
+    }
+    setErrors(p => ({ ...p, [id]: null }))
     setFetching(p => ({ ...p, [id]: true }))
     try {
       const res = await fetch(`/api/channels/${id}/fetch-info?account_id=${check.account.id}`, { method: 'POST' })
@@ -88,10 +107,13 @@ export default function ChannelsPage() {
         toast.success(`@${username}: ${data.subscribers ? (data.subscribers/1000).toFixed(0)+'K подписчиков' : 'данные обновлены'}`)
         load(false)
       } else {
-        toast.error(`Ошибка: ${data.error || 'не удалось получить данные'}`)
+        const errMsg = data.error || 'не удалось получить данные'
+        setErrors(p => ({ ...p, [id]: errMsg }))
+        toast.error(errMsg, { duration: 8000 })
       }
     } catch (e) {
-      toast.error('Ошибка запроса: ' + e.message)
+      setErrors(p => ({ ...p, [id]: e.message }))
+      toast.error('Ошибка: ' + e.message)
     }
     setFetching(p => ({ ...p, [id]: false }))
   }
@@ -223,6 +245,11 @@ export default function ChannelsPage() {
                       {parsing[ch.id] && (
                         <div className="text-[10px] font-mono text-yellow-400 mt-1 animate-pulse">
                           <Clock size={9} className="inline"/> Парсим...
+                        </div>
+                      )}
+                      {errors[ch.id] && (
+                        <div className="text-[10px] font-mono text-danger mt-1 leading-tight">
+                          ⚠️ {errors[ch.id]}
                         </div>
                       )}
                     </td>
