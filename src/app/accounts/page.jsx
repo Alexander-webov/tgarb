@@ -23,6 +23,7 @@ export default function Accounts() {
   const [jsonFile, setJsonFile] = useState(null)
   const [sesFile,  setSesFile]  = useState(null)
   const [importing,setImporting]= useState(false)
+  const [accErrors, setAccErrors] = useState({})
   const [proxyOpen,setProxyOpen]= useState(false)
   const [form,     setForm]     = useState({ phone:'', dailyLimit:50, delayMin:20, delayMax:60 })
   const [proxyForm,setProxyForm]= useState({ host:'', port:1080, proxyType:'socks5', username:'', password:'', country:'' })
@@ -47,14 +48,18 @@ export default function Accounts() {
   }
 
   const handleConnect = async (id) => {
-    toast.loading('Подключаем к Telegram...', { id: 'connect' })
+    setAccErrors(p => ({ ...p, [id]: null }))
+    toast.loading('Подключаем к Telegram...', { id: `connect-${id}` })
     const res = await fetch(`/api/accounts/${id}/connect`, { method: 'POST' })
     const data = await res.json()
-    toast.dismiss('connect')
+    toast.dismiss(`connect-${id}`)
     if (res.ok) {
       toast.success(`✅ ${data.phone} подключён!`)
+      setAccErrors(p => ({ ...p, [id]: null }))
     } else {
-      toast.error(data.message || 'Ошибка подключения', { duration: 8000 })
+      const msg = data.message || 'Ошибка подключения'
+      setAccErrors(p => ({ ...p, [id]: msg }))
+      toast.error(msg, { duration: 8000 })
     }
     setTimeout(load, 1500)
   }
@@ -149,6 +154,12 @@ export default function Accounts() {
                       {acc.status === 'OFFLINE' && (
                         <div className="text-xs text-muted bg-surface2 rounded px-2 py-1 mb-2">
                           💡 Нажми кнопку Wi-Fi чтобы подключить аккаунт к Telegram
+                        </div>
+                      )}
+                      {accErrors[acc.id] && (
+                        <div className="bg-danger/10 border border-danger/30 rounded-lg px-3 py-2 mb-2">
+                          <div className="text-xs text-danger font-bold mb-0.5">⚠️ Ошибка подключения</div>
+                          <div className="text-xs text-danger/80">{accErrors[acc.id]}</div>
                         </div>
                       )}
                     <div className="flex items-center gap-2">
