@@ -23,7 +23,9 @@ export default function Accounts() {
   const [jsonFile, setJsonFile] = useState(null)
   const [sesFile,  setSesFile]  = useState(null)
   const [importing,setImporting]= useState(false)
-  const [accErrors, setAccErrors] = useState({})
+  const [accErrors,   setAccErrors]   = useState({})
+  const [checking,    setChecking]    = useState({})
+  const [checkResult, setCheckResult] = useState({})
   const [proxyOpen,setProxyOpen]= useState(false)
   const [form,     setForm]     = useState({ phone:'', dailyLimit:50, delayMin:20, delayMax:60 })
   const [proxyForm,setProxyForm]= useState({ host:'', port:1080, proxyType:'socks5', username:'', password:'', country:'' })
@@ -98,6 +100,29 @@ export default function Accounts() {
       setJsonOpen(false); setJsonFile(null); setSesFile(null)
       load()
     } else toast.error(data.error || 'Ошибка')
+  }
+
+  const handleSpamCheck = async (id) => {
+    setChecking(p => ({ ...p, [id]: true }))
+    setCheckResult(p => ({ ...p, [id]: null }))
+    toast.loading('Проверяем спамблок...', { id: `check-${id}` })
+    const res = await fetch('/api/accounts/spamcheck', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accountIds: [id] })
+    })
+    const data = await res.json()
+    toast.dismiss(`check-${id}`)
+    setChecking(p => ({ ...p, [id]: false }))
+    const r = data.results?.[0]
+    if (r) {
+      setCheckResult(p => ({ ...p, [id]: r }))
+      if (r.status === 'clean') toast.success(`✅ ${r.phone}: Без спамблока`)
+      else if (r.status === 'limited') toast.error(`⚠️ ${r.phone}: Ограничен SpamBot`, { duration: 8000 })
+      else if (r.status === 'banned') toast.error(`🚫 ${r.phone}: Забанен!`, { duration: 8000 })
+      else toast.error(`❓ ${r.phone}: ${r.detail}`)
+    }
+    load()
   }
 
   return (

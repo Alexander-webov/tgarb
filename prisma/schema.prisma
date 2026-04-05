@@ -377,3 +377,47 @@ enum UserRole {
   USER
   ADMIN
 }
+
+// ── Инвайтер ─────────────────────────────────────────────
+model InviteTask {
+  id           Int      @id @default(autoincrement())
+  name         String
+  targetChat   String   // username чата куда инвайтим
+  status       String   @default("DRAFT") // DRAFT|RUNNING|DONE|PAUSED
+  accountIds   Int[]    @default([])
+  limitPerAcc  Int      @default(25)
+  delaySeconds Int      @default(10)
+  invited      Int      @default(0)
+  failed       Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  @@map("invite_tasks")
+}
+
+// ── Автоответчик ─────────────────────────────────────────
+model AutoReply {
+  id        Int      @id @default(autoincrement())
+  name      String
+  accountId Int
+  isActive  Boolean  @default(false)
+  steps     Json     // [{trigger: "keyword"|"any", message: "text", delay: 5}]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@map("auto_replies")
+}
+
+// ── Масслайкинг сторис ───────────────────────────────────
+model StoriesTask {
+  id           Int      @id @default(autoincrement())
+  name         String
+  status       String   @default("DRAFT")
+  accountIds   Int[]    @default([])
+  targetUsers  String[] @default([]) // usernames or from parsed DB
+  mode         String   @default("view") // view|like|both
+  limitPerAcc  Int      @default(100)
+  viewed       Int      @default(0)
+  liked        Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  @@map("stories_tasks")
+}

@@ -321,6 +321,114 @@ agenda.define('check_proxies', async () => {
 
 // ══════════════════════════════════════════════════════════
 //  START
+// ── Инвайтер ─────────────────────────────────────────────
+agenda.define('run_inviter', async (job) => {
+  const { taskId } = job.attrs.data
+  const { prisma } = await import('../src/lib/prisma.js')
+  const { accountPool } = await import('../src/lib/telegram/client.js')
+  const { Api } = await import('telegram/tl/index.js')
+
+  const task = await prisma.inviteTask.findUnique({ where: { id: taskId } })
+  if (!task || task.status !== 'RUNNING') return
+
+  logger.info({ taskId, chat: task.targetChat }, 'Inviter started')
+
+  // Get users to invite from parsed DB
+  const users = await prisma.parsedUser.findMany({ take: task.limitPerAcc * task.accountIds.length })
+
+  let invited = 0, failed = 0
+  let userIdx = 0
+
+  for (const accId of task.accountIds) {
+    const client = await accountPool.getClient(accId)
+    if (!client) continue
+
+    let accInvited = 0
+    while (accInvited < task.limitPerAcc && userIdx < users.length) {
+      const user = users[userIdx++]
+      try {
+        const entity = await client.getEntity(task.targetChat)
+        await client.invoke(new Api.channels.InviteToChannel({
+          channel: entity,
+          users: [user.tgUserId],
+        }))
+        invited++
+        accInvited++
+        await new Promise(r => setTimeout(r, task.delaySeconds * 1000))
+      } catch (err) {
+        failed++
+        if (err.message?.includes('FLOOD')) break
+      }
+    }
+    await prisma.inviteTask.update({ where: { id: taskId }, data: { invited, failed } })
+  }
+
+  await prisma.inviteTask.update({ where: { id: taskId }, data: { status: 'DONE', invited, failed } })
+  await notify('info', `Инвайтер завершён: приглашено ${invited}, ошибок ${failed}`, { taskId })
+  logger.info({ taskId, invited, failed }, 'Inviter done')
+})
+
+// ── Масслайкинг/масслукинг сторис ────────────────────────
+agenda.define('run_stories', async (job) => {
+  const { taskId } = job.attrs.data
+  const { prisma } = await import('../src/lib/prisma.js')
+  const { accountPool } = await import('../src/lib/telegram/client.js')
+  const { Api } = await import('telegram/tl/index.js')
+
+  const task = await prisma.storiesTask.findUnique({ where: { id: taskId } })
+  if (!task || task.status !== 'RUNNING') return
+
+  logger.info({ taskId }, 'Stories task started')
+
+  let viewed = 0, liked = 0
+
+  // Get target users from parsed DB if no explicit list
+  let targets = task.targetUsers
+  if (!targets.length) {
+    const parsed = await prisma.parsedUser.findMany({
+      where: { username: { not: null } },
+      take: task.limitPerAcc * task.accountIds.length,
+      select: { username: true }
+    })
+    targets = parsed.map(u => u.username).filter(Boolean)
+  }
+
+  for (const accId of task.accountIds) {
+    const client = await accountPool.getClient(accId)
+    if (!client) continue
+
+    let accCount = 0
+    for (const username of targets) {
+      if (accCount >= task.limitPerAcc) break
+      try {
+        const peer = await client.getEntity(username)
+        const stories = await client.invoke(new Api.stories.GetPeerStories({ peer }))
+        for (const story of (stories.stories?.stories || [])) {
+          if (task.mode === 'view' || task.mode === 'both') {
+            await client.invoke(new Api.stories.IncrementStoryViews({
+              peer, id: [story.id]
+            }))
+            viewed++
+          }
+          if ((task.mode === 'like' || task.mode === 'both') && story.id) {
+            await client.invoke(new Api.stories.SendReaction({
+              peer, storyId: story.id,
+              reaction: new Api.ReactionEmoji({ emoticon: '❤️' })
+            }))
+            liked++
+          }
+        }
+        accCount++
+        await new Promise(r => setTimeout(r, 2000 + Math.random() * 3000))
+      } catch { continue }
+    }
+    await prisma.storiesTask.update({ where: { id: taskId }, data: { viewed, liked } })
+  }
+
+  await prisma.storiesTask.update({ where: { id: taskId }, data: { status: 'DONE', viewed, liked } })
+  await notify('info', `Масслайкинг завершён: просмотров ${viewed}, лайков ${liked}`, { taskId })
+})
+
 // ══════════════════════════════════════════════════════════
 async function start() {
   await agenda.start()
