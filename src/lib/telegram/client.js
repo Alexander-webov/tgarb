@@ -230,6 +230,15 @@ export class TelegramParser {
     const members = []
     try {
       const entity = await client.getEntity(channelUsername.replace('@', ''))
+
+      // Check if it's a broadcast channel (can't get members) or group
+      const isBroadcast = entity.broadcast === true
+      if (isBroadcast) {
+        // For broadcast channels - parse members who commented (via discussion group)
+        // or throw clear error
+        throw new Error('BROADCAST_CHANNEL: Это broadcast-канал. Telegram не позволяет получить список подписчиков. Парсинг доступен только для групп/чатов.')
+      }
+
       for await (const user of client.iterParticipants(entity, { limit })) {
         if (!user.bot && user.id) {
           members.push({
