@@ -231,13 +231,65 @@ export class TelegramParser {
     try {
       const entity = await client.getEntity(channelUsername.replace('@', ''))
 
-      // Check if it's a broadcast channel (can't get members) or group
       const isBroadcast = entity.broadcast === true
+
       if (isBroadcast) {
-        // For broadcast channels - parse members who commented (via discussion group)
-        // or throw clear error
-        throw new Error('BROADCAST_CHANNEL: Это broadcast-канал. Telegram не позволяет получить список подписчиков. Парсинг доступен только для групп/чатов.')
-      }
+        // Broadcast channel - parse commenters from posts instead
+        logger.info({ channelUsername }, 'Broadcast channel - parsing commenters from posts')
+
+        const { Api } = await import('telegram/tl/index.js')
+
+        // Get recent posts
+        let postCount = 0
+        for await (const msg of client.iterMessages(entity, { limit: 100 })) {
+          if (!msg.id) continue
+          try {
+            // Get comments for this post
+            const replies = await client.invoke(new Api.messages.GetReplies({
+              peer: entity,
+              msgId: msg.id,
+              offsetId: 0,
+              offsetDate: 0,
+              addOffset: 0,
+              limit: 100,
+              maxId: 0,
+              minId: 0,
+              hash: BigInt(0),
+            }))
+
+            for (const user of (replies.users || [])) {
+              if (!user.bot && user.id && !user.deleted) {
+                members.push({
+                  channelId: channel.id,
+                  tgUserId: BigInt(user.id),
+                  username: user.username || null,
+                  firstName: user.firstName || null,
+                  lastName: user.lastName || null,
+                  isBot: false,
+                })
+              }
+            }
+            postCount++
+            if (members.length >= limit) break
+          } catch {
+            // Post has no comments or comments disabled
+            continue
+          }
+        }
+
+        // Deduplicate by tgUserId
+        const seen = new Set()
+        const unique = members.filter(m => {
+          const key = m.tgUserId.toString()
+          if (seen.has(key)) return false
+          seen.add(key)
+          return true
+        })
+        members.length = 0
+        members.push(...unique)
+
+        logger.info({ channelUsername, posts: postCount, commenters: members.length }, 'Commenters parsed')
+      } else {
 
       for await (const user of client.iterParticipants(entity, { limit })) {
         if (!user.bot && user.id) {
@@ -251,6 +303,8 @@ export class TelegramParser {
           })
         }
       }
+
+      } // end else (non-broadcast)
 
       // Upsert batch
       if (members.length > 0) {
