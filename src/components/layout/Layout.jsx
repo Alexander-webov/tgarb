@@ -4,8 +4,8 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import {
-  LayoutDashboard, Radio, Globe, Send, Zap, Bot,
-  Link2, BarChart3, Calculator, Flame, Users, Settings, Search, UserPlus, Eye, MessageSquare, Bell, Bell, Shield, LogOut
+  LayoutDashboard, Radio, Globe, Send, Bot,
+  Link2, BarChart3, Calculator, Flame, Users, Settings, Search, UserPlus, Eye, MessageSquare, Bell, Shield, LogOut, Zap
 } from 'lucide-react'
 
 const NAV = [
