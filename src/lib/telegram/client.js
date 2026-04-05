@@ -306,6 +306,11 @@ export class TelegramParser {
 
       for await (const user of client.iterParticipants(entity, { limit })) {
         if (!user.bot && user.id) {
+          // Determine last online
+          let lastOnline = null
+          if (user.status?.className === 'UserStatusOnline') lastOnline = new Date()
+          else if (user.status?.wasOnline) lastOnline = new Date(user.status.wasOnline * 1000)
+
           members.push({
             channelId: channel.id,
             tgUserId: BigInt(user.id),
@@ -313,6 +318,9 @@ export class TelegramParser {
             firstName: user.firstName || null,
             lastName: user.lastName || null,
             isBot: false,
+            hasAvatar: !!(user.photo),
+            lastOnline,
+            sex: user.fake ? 0 : null,
           })
         }
       }

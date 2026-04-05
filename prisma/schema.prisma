@@ -127,6 +127,9 @@ model Post {
 model ParsedUser {
   id         Int      @id @default(autoincrement())
   channelId  Int
+  hasAvatar  Boolean? 
+  lastOnline DateTime?
+  sex        Int?     // 0=unknown, 1=male, 2=female
   channel    Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
   tgUserId   BigInt
   username   String?
@@ -376,6 +379,35 @@ enum UserRole {
   PENDING
   USER
   ADMIN
+}
+
+// ── Чекер номеров ────────────────────────────────────────
+model NumberCheck {
+  id        Int      @id @default(autoincrement())
+  phone     String
+  exists    Boolean?
+  username  String?
+  firstName String?
+  lastName  String?
+  checkedAt DateTime @default(now())
+  @@map("number_checks")
+}
+
+// ── Накрутка ─────────────────────────────────────────────
+model BoostTask {
+  id         Int      @id @default(autoincrement())
+  name       String
+  type       String   // reactions|votes|views
+  target     String   // channel/post URL or username
+  postId     Int?
+  emoji      String   @default("❤️")
+  count      Int      @default(100)
+  accountIds Int[]    @default([])
+  status     String   @default("DRAFT")
+  done       Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  @@map("boost_tasks")
 }
 
 // ── Инвайтер ─────────────────────────────────────────────

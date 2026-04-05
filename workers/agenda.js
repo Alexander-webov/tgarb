@@ -429,6 +429,70 @@ agenda.define('run_stories', async (job) => {
   await notify('info', `Масслайкинг завершён: просмотров ${viewed}, лайков ${liked}`, { taskId })
 })
 
+// ── Накрутка реакций/голосований ─────────────────────────
+agenda.define('run_boost', async (job) => {
+  const { taskId } = job.attrs.data
+  const { prisma } = await import('../src/lib/prisma.js')
+  const { accountPool } = await import('../src/lib/telegram/client.js')
+  const { Api } = await import('telegram/tl/index.js')
+
+  const task = await prisma.boostTask.findUnique({ where: { id: taskId } })
+  if (!task) return
+
+  let done = 0
+  const perAcc = Math.ceil(task.count / Math.max(task.accountIds.length, 1))
+
+  for (const accId of task.accountIds) {
+    const client = await accountPool.getClient(accId)
+    if (!client) continue
+    try {
+      const entity = await client.getEntity(task.target)
+      if (task.type === 'reactions' && task.postId) {
+        await client.invoke(new Api.messages.SendReaction({
+          peer: entity,
+          msgId: task.postId,
+          reaction: [new Api.ReactionEmoji({ emoticon: task.emoji || '❤️' })],
+        }))
+        done++
+      } else if (task.type === 'views' && task.postId) {
+        await client.invoke(new Api.messages.GetMessagesViews({ peer: entity, id: [task.postId], increment: true }))
+        done++
+      }
+      await new Promise(r => setTimeout(r, 1500 + Math.random() * 2000))
+    } catch(e) { logger.error({ taskId, accId, err: e.message }, 'Boost error') }
+  }
+
+  await prisma.boostTask.update({ where: { id: taskId }, data: { status: 'DONE', done } })
+  await notify('info', `Накрутка завершена: ${done} действий`, { taskId })
+})
+
+// ── Клонер ────────────────────────────────────────────────
+agenda.define('run_cloner', async (job) => {
+  const { sourceChat, targetChat, accountId, limit } = job.attrs.data
+  const { accountPool } = await import('../src/lib/telegram/client.js')
+
+  const client = await accountPool.getClient(accountId)
+  if (!client) return
+
+  try {
+    const source = await client.getEntity(sourceChat)
+    const target = await client.getEntity(targetChat)
+    let cloned = 0
+
+    for await (const msg of client.iterMessages(source, { limit })) {
+      if (!msg.message && !msg.media) continue
+      try {
+        await client.sendMessage(target, { message: msg.message || '', file: msg.media || undefined })
+        cloned++
+        await new Promise(r => setTimeout(r, 2000 + Math.random() * 3000))
+      } catch { continue }
+    }
+    await notify('info', `Клонирование завершено: ${cloned} сообщений из ${sourceChat} в ${targetChat}`, {})
+  } catch(e) {
+    logger.error({ sourceChat, targetChat, err: e.message }, 'Cloner error')
+  }
+})
+
 // ══════════════════════════════════════════════════════════
 async function start() {
   await agenda.start()

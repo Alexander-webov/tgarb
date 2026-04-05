@@ -32,6 +32,7 @@ const NAV = [
     { href: '/inviter',   icon: UserPlus,      label: 'Инвайтер',     badge: null },
     { href: '/stories',   icon: Eye,           label: 'Масслайкинг',  badge: 'New' },
     { href: '/autoreply', icon: MessageSquare, label: 'Автоответчик', badge: null },
+    { href: '/tools',     icon: Zap,           label: 'Доп. инструменты', badge: null },
   ]},
 ]
 
