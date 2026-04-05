@@ -150,7 +150,7 @@ export function Topbar({ title, subtitle, actions }) {
         {subtitle && <p className="text-xs font-mono text-muted mt-0.5">{subtitle}</p>}
       </div>
       <div className="flex items-center gap-3">
-        <a href="/settings" className="relative btn-ghost px-3 py-2">
+        <a href="/notifications" className="relative btn-ghost px-3 py-2">
           <Bell size={16}/>
           {unread > 0 && (
             <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-danger text-white text-[10px] font-bold flex items-center justify-center">

@@ -8,6 +8,15 @@ import pino from 'pino'
 
 const logger = pino({ name: 'agenda' })
 
+async function notify(type, message, data = {}) {
+  try {
+    const { prisma } = await import('../src/lib/prisma.js')
+    await prisma.notification.create({ data: { type, message, data } })
+  } catch (e) {
+    logger.error({ err: e.message }, 'Failed to create notification')
+  }
+}
+
 // ── Agenda instance ───────────────────────────────────────
 const agenda = new Agenda({
   db: {
@@ -128,6 +137,7 @@ agenda.define('run_campaign', { concurrency: 3 }, async (job) => {
   const { notifyCampaignDone } = await import('../src/lib/notifications.js')
   await notifyCampaignDone(campaign.name, sent, 0).catch(() => {})
   logger.info({ campaignId, sent, failed }, 'Campaign done')
+  await notify('campaign_done', `Рассылка #${campaignId} завершена: отправлено ${sent}, ошибок ${failed}`, { campaignId, sent, failed })
 })
 
 // ── Парсинг участников канала ─────────────────────────────
@@ -186,8 +196,16 @@ agenda.define('warmup_step', async (job) => {
     const { smartWarmupStep } = await import('../src/lib/telegram/warmup.js')
     const result = await smartWarmupStep(accountId)
     logger.info({ accountId, ...result }, 'warmup_step DONE')
+  if (result.status === 'banned') {
+    await notify('ban', `Аккаунт #${accountId} забанен во время прогрева`, { accountId })
+  } else if (result.status === 'limited') {
+    await notify('limited', `Аккаунт #${accountId} ограничен SpamBot`, { accountId })
+  } else if (result.actions > 0) {
+    await notify('warmup_step', `Прогрев аккаунта #${accountId}: ${result.actions} действий, день ${result.day || 0}`, { accountId, ...result })
+  }
   } catch (err) {
     logger.error({ accountId, err: err.message }, 'warmup_step ERROR')
+    await notify('ban', `Ошибка прогрева аккаунта #${accountId}: ${err.message}`, { accountId })
   }
 })
 

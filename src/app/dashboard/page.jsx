@@ -25,12 +25,7 @@ export default function Dashboard() {
   const [conversions, setConversions] = useState([])
   const feedIdx = useRef(0)
 
-  const [liveFeed, setLiveFeed] = useState([
-    { ch: '@cryptowhales', text: 'Новый сигнал по USDT — огромный объём входит', kw: 'USDT',    color: '#00e5ff', t: '14:32' },
-    { ch: '@arbsecret',    text: 'Закрытый слив на топовый оффер — только своих', kw: 'слив',    color: '#a78bfa', t: '14:29' },
-    { ch: '@dropsmoney',   text: 'Получи депозит 200% бонусом — акция до конца', kw: 'депозит', color: '#00ff9d', t: '14:25' },
-    { ch: '@bettersclub',  text: 'Экспресс на вечер — крипта против беттинга',   kw: 'крипта',  color: '#ff6b35', t: '14:21' },
-  ])
+  const [liveFeed, setLiveFeed] = useState([])
 
   // WebSocket live events
   useWebSocket({
@@ -44,7 +39,9 @@ export default function Dashboard() {
       if (event === 'new_post') {
         const now = new Date()
         const t = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`
-        setLiveFeed(prev => [{ ch: `@${data.channel}`, text: data.text, kw: data.keywords?.[0] || '', color: '#00e5ff', t }, ...prev].slice(0, 10))
+        const colors = ['#00e5ff','#00ff9d','#a78bfa','#ff6b35','#ffd32a']
+        const color = colors[Math.floor(Math.random() * colors.length)]
+        setLiveFeed(prev => [{ ch: `@${data.channel}`, text: data.text, kw: data.keywords?.[0] || '', color, t }, ...prev].slice(0, 20))
       }
     }, []),
   })
@@ -161,7 +158,15 @@ export default function Dashboard() {
               </div>
             </div>
             <div className="divide-y divide-border max-h-64 overflow-y-auto">
-              {liveFeed.map((item, i) => (
+              {liveFeed.length === 0 ? (
+                <div className="px-5 py-8 text-center">
+                  <div className="text-2xl mb-2">📡</div>
+                  <div className="text-xs font-bold text-muted mb-1">Лента пуста</div>
+                  <div className="text-[11px] font-mono text-muted/60 leading-relaxed">
+                    Добавь каналы во вкладке «Каналы» и включи Мониторинг — новые посты будут появляться здесь в реальном времени
+                  </div>
+                </div>
+              ) : liveFeed.map((item, i) => (
                 <div key={i} className="flex gap-3 px-5 py-3 hover:bg-surface2/50 transition-colors">
                   <div className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0"
                        style={{ background: item.color, boxShadow: `0 0 6px ${item.color}60` }}/>
