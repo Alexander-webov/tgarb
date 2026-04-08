@@ -7,14 +7,10 @@ import cron from 'node-cron'
 import pino from 'pino'
 
 const logger = pino({ name: 'agenda' })
-
-async function notify(type, message, data = {}) {
-  try {
-    const { prisma } = await import('../src/lib/prisma.js')
-    await prisma.notification.create({ data: { type, message, data } })
-  } catch (e) {
-    logger.error({ err: e.message }, 'Failed to create notification')
-  }
+let antiban = null
+async function getAntiban() {
+  if (!antiban) antiban = await import('../src/lib/antiban.js')
+  return antiban
 }
 
 // ── Agenda instance ───────────────────────────────────────
@@ -33,7 +29,7 @@ const agenda = new Agenda({
 // ══════════════════════════════════════════════════════════
 
 // ── Рассылка кампании ─────────────────────────────────────
-agenda.define('run_campaign', { concurrency: 1 }, async (job) => {
+agenda.define('run_campaign', { concurrency: 3 }, async (job) => {
   const { campaignId } = job.attrs.data
   logger.info({ campaignId }, 'Running campaign')
 
@@ -48,123 +44,69 @@ agenda.define('run_campaign', { concurrency: 1 }, async (job) => {
 
   if (!campaign || campaign.status !== 'RUNNING') return
 
-  // Get already sent recipients to avoid duplicates
-  const alreadySent = await prisma.sentMessage.findMany({
-    where: { campaignId },
-    select: { recipientId: true },
-  })
-  const sentIds = new Set(alreadySent.map(s => s.recipientId.toString()))
-
   const recipients = await prisma.parsedUser.findMany({
     where: { channel: { username: { in: campaign.targetChannels } } },
-    take: (campaign.maxRecipients || 10000) + alreadySent.length,
+    take: campaign.maxRecipients || 10000,
   })
 
-  // Filter out already sent
-  const pending = recipients.filter(u => !sentIds.has(u.tgUserId.toString()))
-
-  if (pending.length === 0) {
-    await prisma.campaign.update({ where: { id: campaignId }, data: { status: 'DONE' } })
-    await notify('campaign_done', `Рассылка «${campaign.name}» завершена — все получатели охвачены`, { campaignId })
-    return
-  }
-
-  // Get active accounts - use campaign accounts or all active
-  let accounts = campaign.accounts.map(a => a.account).filter(a => a.status === 'ACTIVE')
-  if (accounts.length === 0) {
-    // Fall back to all active accounts
-    accounts = await prisma.tgAccount.findMany({ where: { status: 'ACTIVE', sessionData: { not: null } } })
-  }
-  if (accounts.length === 0) {
-    await prisma.campaign.update({ where: { id: campaignId }, data: { status: 'PAUSED' } })
-    await notify('info', `Рассылка «${campaign.name}» приостановлена — нет активных аккаунтов`, { campaignId })
-    return
-  }
-
-  let sent = campaign.sentCount || 0
-  let failed = campaign.failedCount || 0
+  let sent = 0, failed = 0
+  const accounts = campaign.accounts.map(a => a.account)
   let accIdx = 0
-  let consecutiveFails = 0
 
-  for (const user of pending) {
-    // Re-check campaign status (could be paused externally)
-    const currentCampaign = await prisma.campaign.findUnique({ where: { id: campaignId }, select: { status: true } })
-    if (!currentCampaign || currentCampaign.status !== 'RUNNING') {
-      logger.info({ campaignId }, 'Campaign stopped externally')
-      break
-    }
+  let sessionCount = 0
+  for (const user of recipients) {
+    // Re-check campaign status
+    const cur = await prisma.campaign.findUnique({ where: { id: campaignId }, select: { status: true } })
+    if (!cur || cur.status !== 'RUNNING') break
 
-    // Smart account rotation - find next available account
-    let account = null
-    let attempts = 0
-    while (attempts < accounts.length) {
-      const candidate = accounts[accIdx % accounts.length]
-      // Refresh account status from DB
-      const fresh = await prisma.tgAccount.findUnique({ where: { id: candidate.id } })
-      if (fresh && fresh.status === 'ACTIVE' && fresh.sentToday < fresh.dailyLimit) {
-        account = fresh
-        break
-      }
-      accIdx++
-      attempts++
-    }
-
+    // ANTIBAN: pick best available account
+    const ab = await getAntiban()
+    const account = await ab.pickBestAccount(accounts.map(a => a.id))
     if (!account) {
-      logger.warn({ campaignId }, 'All accounts at daily limit or inactive — stopping')
       await prisma.campaign.update({ where: { id: campaignId }, data: { status: 'PAUSED', sentCount: sent, failedCount: failed } })
-      await notify('info', `Рассылка «${campaign.name}» приостановлена — все аккаунты достигли дневного лимита. Продолжится завтра.`, { campaignId })
+      await notify('info', `Рассылка «${campaign.name}» приостановлена — все аккаунты на дневном лимите. Продолжится завтра.`, { campaignId })
       break
     }
 
-    // Random delay between messages (use campaign setting + jitter)
-    const baseDelay = campaign.delayBetween || 30
-    const jitter = Math.random() * 15 - 7  // ±7 seconds
-    const delay = Math.max(10, baseDelay + jitter)
+    // ANTIBAN: session break every 20 messages
+    if (sessionCount > 0 && sessionCount % 20 === 0) {
+      const breakSec = 300 + Math.random() * 300
+      logger.info({ campaignId, break: Math.round(breakSec) }, 'Antiban session break')
+      await notify('info', `Рассылка «${campaign.name}»: антибан пауза ${Math.round(breakSec/60)} мин`, { campaignId })
+      await new Promise(r => setTimeout(r, breakSec * 1000))
+    }
+
+    // ANTIBAN: randomize message (spintext {вар1|вар2|вар3})
+    const messageText = ab.randomizeMessage(campaign.messageText)
+
+    // ANTIBAN: natural delay with jitter
+    const delay = ab.getDelay(account, sessionCount)
     await new Promise(r => setTimeout(r, delay * 1000))
 
-    // Send message
-    const result = await sender.sendDM(account.id, user.tgUserId, campaign.messageText)
+    const result = await sender.sendDM(account.id, user.tgUserId, messageText)
 
     if (result.ok) {
       sent++
-      consecutiveFails = 0
+      sessionCount++
       await prisma.tgAccount.update({ where: { id: account.id }, data: { sentToday: { increment: 1 } } })
       await prisma.sentMessage.create({
         data: { campaignId, accountId: account.id, recipientId: user.tgUserId, isDelivered: true },
       })
-      // Broadcast live progress
-      wsManager.broadcast('campaign_progress', {
-        campaignId, sent, failed,
-        status: 'sent',
-        message: `✅ Отправлено ${sent} сообщений (аккаунт ${account.phone})`
-      }).catch(() => {})
+      wsManager.broadcast('campaign_progress', { campaignId, sent, failed }).catch(() => {})
     } else {
-      failed++
-      consecutiveFails++
-      await prisma.sentMessage.create({
-        data: { campaignId, accountId: account.id, recipientId: user.tgUserId, isDelivered: false, error: result.error || 'unknown' },
-      })
-
-      if (result.peerFlood) {
-        // PeerFlood = account is spammy, rotate immediately
-        await prisma.tgAccount.update({ where: { id: account.id }, data: { status: 'LIMITED' } })
-        await notify('limited', `Аккаунт ${account.phone} получил PeerFlood во время рассылки «${campaign.name}». Переключаем.`, { campaignId, accountId: account.id })
-        accIdx++
-      } else if (result.floodWait) {
-        // FloodWait = rotate account, don't wait
-        await notify('limited', `Аккаунт ${account.phone}: FloodWait ${result.floodWait}с. Переключаем на следующий.`, { campaignId })
-        accIdx++
-      } else if (result.userPrivacy) {
-        // User has privacy settings - skip silently, not an error
-        failed--
-        await prisma.sentMessage.deleteMany({ where: { campaignId, recipientId: user.tgUserId } })
-      }
-
-      // Stop if too many consecutive failures
-      if (consecutiveFails >= 5) {
-        await prisma.campaign.update({ where: { id: campaignId }, data: { status: 'PAUSED', sentCount: sent, failedCount: failed } })
-        await notify('info', `Рассылка «${campaign.name}» приостановлена — 5 ошибок подряд. Проверь аккаунты.`, { campaignId })
-        break
+      // ANTIBAN: handle error
+      const errAction = await ab.handleSendError(account.id, { message: result.error || '' })
+      if (errAction.action === 'skip') {
+        // Privacy/deleted — не ошибка, тихо пропускаем
+      } else {
+        failed++
+        await prisma.sentMessage.create({
+          data: { campaignId, accountId: account.id, recipientId: user.tgUserId, isDelivered: false, error: result.error || 'unknown' },
+        })
+        if (errAction.action === 'switch_account' || errAction.action === 'banned') {
+          await notify(errAction.action === 'banned' ? 'ban' : 'limited',
+            `Аккаунт ${account.phone}: ${result.error?.slice(0,60)}. Переключаем.`, { campaignId, accountId: account.id })
+        }
       }
     }
 
@@ -194,7 +136,6 @@ agenda.define('run_campaign', { concurrency: 1 }, async (job) => {
   const { notifyCampaignDone } = await import('../src/lib/notifications.js')
   await notifyCampaignDone(campaign.name, sent, 0).catch(() => {})
   logger.info({ campaignId, sent, failed }, 'Campaign done')
-  await notify('campaign_done', `Рассылка #${campaignId} завершена: отправлено ${sent}, ошибок ${failed}`, { campaignId, sent, failed })
 })
 
 // ── Парсинг участников канала ─────────────────────────────
@@ -250,16 +191,30 @@ agenda.define('warmup_step', async (job) => {
   const { accountId } = job.attrs.data
   logger.info({ accountId }, 'warmup_step START')
   try {
+    // Only warm accounts explicitly in WARMING status
+    const { prisma } = await import('../src/lib/prisma.js')
+    const acc = await prisma.tgAccount.findUnique({ where: { id: accountId } })
+    if (!acc) { logger.warn({ accountId }, 'Account not found'); return }
+    if (acc.status !== 'WARMING') {
+      logger.info({ accountId, status: acc.status }, 'Skipping - account not in WARMING mode')
+      return
+    }
+    if (acc.isWarmed || acc.warmupDays >= 5) {
+      await prisma.tgAccount.update({ where: { id: accountId }, data: { isWarmed: true } })
+      logger.info({ accountId }, 'Account fully warmed')
+      await notify('warmup_done', `Аккаунт ${acc.phone} прогрет за ${acc.warmupDays} дней — готов к работе!`, { accountId })
+      return
+    }
     const { smartWarmupStep } = await import('../src/lib/telegram/warmup.js')
     const result = await smartWarmupStep(accountId)
     logger.info({ accountId, ...result }, 'warmup_step DONE')
-  if (result.status === 'banned') {
-    await notify('ban', `Аккаунт #${accountId} забанен во время прогрева`, { accountId })
-  } else if (result.status === 'limited') {
-    await notify('limited', `Аккаунт #${accountId} ограничен SpamBot`, { accountId })
-  } else if (result.actions > 0) {
-    await notify('warmup_step', `Прогрев аккаунта #${accountId}: ${result.actions} действий, день ${result.day || 0}`, { accountId, ...result })
-  }
+    if (result.status === 'banned') {
+      await notify('ban', `Аккаунт #${accountId} забанен во время прогрева`, { accountId })
+    } else if (result.status === 'limited') {
+      await notify('limited', `Аккаунт #${accountId} ограничен SpamBot`, { accountId })
+    } else if (result.actions > 0) {
+      await notify('warmup_step', `Прогрев ${acc.phone}: ${result.actions} действий, день ${acc.warmupDays}`, { accountId })
+    }
   } catch (err) {
     logger.error({ accountId, err: err.message }, 'warmup_step ERROR')
     await notify('ban', `Ошибка прогрева аккаунта #${accountId}: ${err.message}`, { accountId })
@@ -272,10 +227,16 @@ agenda.define('warmup_cycle', async () => {
 
   const accounts = await prisma.tgAccount.findMany({
     where: {
-      status: { in: ['WARMING', 'ACTIVE', 'OFFLINE'] },
+      status: 'WARMING',   // Только аккаунты явно переведённые в режим прогрева
+      isWarmed: false,     // Пропускаем уже прогретые
       sessionData: { not: null },
     },
   })
+
+  if (accounts.length === 0) {
+    logger.info('warmup_cycle: нет аккаунтов на прогреве, пропускаем')
+    return
+  }
 
   for (const acc of accounts) {
     await agenda.now('warmup_step', { accountId: acc.id })
@@ -321,178 +282,6 @@ agenda.define('check_proxies', async () => {
 
 // ══════════════════════════════════════════════════════════
 //  START
-// ── Инвайтер ─────────────────────────────────────────────
-agenda.define('run_inviter', async (job) => {
-  const { taskId } = job.attrs.data
-  const { prisma } = await import('../src/lib/prisma.js')
-  const { accountPool } = await import('../src/lib/telegram/client.js')
-  const { Api } = await import('telegram/tl/index.js')
-
-  const task = await prisma.inviteTask.findUnique({ where: { id: taskId } })
-  if (!task || task.status !== 'RUNNING') return
-
-  logger.info({ taskId, chat: task.targetChat }, 'Inviter started')
-
-  // Get users to invite from parsed DB
-  const users = await prisma.parsedUser.findMany({ take: task.limitPerAcc * task.accountIds.length })
-
-  let invited = 0, failed = 0
-  let userIdx = 0
-
-  for (const accId of task.accountIds) {
-    const client = await accountPool.getClient(accId)
-    if (!client) continue
-
-    let accInvited = 0
-    while (accInvited < task.limitPerAcc && userIdx < users.length) {
-      const user = users[userIdx++]
-      try {
-        const entity = await client.getEntity(task.targetChat)
-        await client.invoke(new Api.channels.InviteToChannel({
-          channel: entity,
-          users: [user.tgUserId],
-        }))
-        invited++
-        accInvited++
-        await new Promise(r => setTimeout(r, task.delaySeconds * 1000))
-      } catch (err) {
-        failed++
-        if (err.message?.includes('FLOOD')) break
-      }
-    }
-    await prisma.inviteTask.update({ where: { id: taskId }, data: { invited, failed } })
-  }
-
-  await prisma.inviteTask.update({ where: { id: taskId }, data: { status: 'DONE', invited, failed } })
-  await notify('info', `Инвайтер завершён: приглашено ${invited}, ошибок ${failed}`, { taskId })
-  logger.info({ taskId, invited, failed }, 'Inviter done')
-})
-
-// ── Масслайкинг/масслукинг сторис ────────────────────────
-agenda.define('run_stories', async (job) => {
-  const { taskId } = job.attrs.data
-  const { prisma } = await import('../src/lib/prisma.js')
-  const { accountPool } = await import('../src/lib/telegram/client.js')
-  const { Api } = await import('telegram/tl/index.js')
-
-  const task = await prisma.storiesTask.findUnique({ where: { id: taskId } })
-  if (!task || task.status !== 'RUNNING') return
-
-  logger.info({ taskId }, 'Stories task started')
-
-  let viewed = 0, liked = 0
-
-  // Get target users from parsed DB if no explicit list
-  let targets = task.targetUsers
-  if (!targets.length) {
-    const parsed = await prisma.parsedUser.findMany({
-      where: { username: { not: null } },
-      take: task.limitPerAcc * task.accountIds.length,
-      select: { username: true }
-    })
-    targets = parsed.map(u => u.username).filter(Boolean)
-  }
-
-  for (const accId of task.accountIds) {
-    const client = await accountPool.getClient(accId)
-    if (!client) continue
-
-    let accCount = 0
-    for (const username of targets) {
-      if (accCount >= task.limitPerAcc) break
-      try {
-        const peer = await client.getEntity(username)
-        const stories = await client.invoke(new Api.stories.GetPeerStories({ peer }))
-        for (const story of (stories.stories?.stories || [])) {
-          if (task.mode === 'view' || task.mode === 'both') {
-            await client.invoke(new Api.stories.IncrementStoryViews({
-              peer, id: [story.id]
-            }))
-            viewed++
-          }
-          if ((task.mode === 'like' || task.mode === 'both') && story.id) {
-            await client.invoke(new Api.stories.SendReaction({
-              peer, storyId: story.id,
-              reaction: new Api.ReactionEmoji({ emoticon: '❤️' })
-            }))
-            liked++
-          }
-        }
-        accCount++
-        await new Promise(r => setTimeout(r, 2000 + Math.random() * 3000))
-      } catch { continue }
-    }
-    await prisma.storiesTask.update({ where: { id: taskId }, data: { viewed, liked } })
-  }
-
-  await prisma.storiesTask.update({ where: { id: taskId }, data: { status: 'DONE', viewed, liked } })
-  await notify('info', `Масслайкинг завершён: просмотров ${viewed}, лайков ${liked}`, { taskId })
-})
-
-// ── Накрутка реакций/голосований ─────────────────────────
-agenda.define('run_boost', async (job) => {
-  const { taskId } = job.attrs.data
-  const { prisma } = await import('../src/lib/prisma.js')
-  const { accountPool } = await import('../src/lib/telegram/client.js')
-  const { Api } = await import('telegram/tl/index.js')
-
-  const task = await prisma.boostTask.findUnique({ where: { id: taskId } })
-  if (!task) return
-
-  let done = 0
-  const perAcc = Math.ceil(task.count / Math.max(task.accountIds.length, 1))
-
-  for (const accId of task.accountIds) {
-    const client = await accountPool.getClient(accId)
-    if (!client) continue
-    try {
-      const entity = await client.getEntity(task.target)
-      if (task.type === 'reactions' && task.postId) {
-        await client.invoke(new Api.messages.SendReaction({
-          peer: entity,
-          msgId: task.postId,
-          reaction: [new Api.ReactionEmoji({ emoticon: task.emoji || '❤️' })],
-        }))
-        done++
-      } else if (task.type === 'views' && task.postId) {
-        await client.invoke(new Api.messages.GetMessagesViews({ peer: entity, id: [task.postId], increment: true }))
-        done++
-      }
-      await new Promise(r => setTimeout(r, 1500 + Math.random() * 2000))
-    } catch(e) { logger.error({ taskId, accId, err: e.message }, 'Boost error') }
-  }
-
-  await prisma.boostTask.update({ where: { id: taskId }, data: { status: 'DONE', done } })
-  await notify('info', `Накрутка завершена: ${done} действий`, { taskId })
-})
-
-// ── Клонер ────────────────────────────────────────────────
-agenda.define('run_cloner', async (job) => {
-  const { sourceChat, targetChat, accountId, limit } = job.attrs.data
-  const { accountPool } = await import('../src/lib/telegram/client.js')
-
-  const client = await accountPool.getClient(accountId)
-  if (!client) return
-
-  try {
-    const source = await client.getEntity(sourceChat)
-    const target = await client.getEntity(targetChat)
-    let cloned = 0
-
-    for await (const msg of client.iterMessages(source, { limit })) {
-      if (!msg.message && !msg.media) continue
-      try {
-        await client.sendMessage(target, { message: msg.message || '', file: msg.media || undefined })
-        cloned++
-        await new Promise(r => setTimeout(r, 2000 + Math.random() * 3000))
-      } catch { continue }
-    }
-    await notify('info', `Клонирование завершено: ${cloned} сообщений из ${sourceChat} в ${targetChat}`, {})
-  } catch(e) {
-    logger.error({ sourceChat, targetChat, err: e.message }, 'Cloner error')
-  }
-})
-
 // ══════════════════════════════════════════════════════════
 async function start() {
   await agenda.start()

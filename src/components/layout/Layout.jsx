@@ -4,8 +4,8 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import {
-  LayoutDashboard, Radio, Globe, Send, Bot,
-  Link2, BarChart3, Calculator, Flame, Users, Settings, Search, UserPlus, Eye, MessageSquare, Bell, Shield, LogOut, Zap
+  LayoutDashboard, Radio, Globe, Send, Zap, Bot,
+  Link2, BarChart3, Calculator, Flame, Users, Settings, Search, Bell, Shield, LogOut
 } from 'lucide-react'
 
 const NAV = [
@@ -26,13 +26,8 @@ const NAV = [
     { href: '/warmup',    icon: Flame,    label: 'Прогрев',   badge: null },
     { href: '/accounts',  icon: Users,    label: 'Аккаунты',  badge: null },
     { href: '/spy',       icon: Search,   label: 'Шпион',     badge: 'New', bc: 'green' },
-    { href: '/settings',  icon: Settings, label: 'Настройки', badge: null },
-  ]},
-  { label: 'Инструменты', items: [
-    { href: '/inviter',   icon: UserPlus,      label: 'Инвайтер',     badge: null },
-    { href: '/stories',   icon: Eye,           label: 'Масслайкинг',  badge: 'New' },
-    { href: '/autoreply', icon: MessageSquare, label: 'Автоответчик', badge: null },
-    { href: '/tools',     icon: Zap,           label: 'Доп. инструменты', badge: null },
+    { href: '/settings',  icon: Settings,     label: 'Настройки',  badge: null },
+    { href: '/antiban',   icon: ShieldCheck,  label: 'Антибан',    badge: 'New' },
   ]},
 ]
 
@@ -156,7 +151,7 @@ export function Topbar({ title, subtitle, actions }) {
         {subtitle && <p className="text-xs font-mono text-muted mt-0.5">{subtitle}</p>}
       </div>
       <div className="flex items-center gap-3">
-        <a href="/notifications" className="relative btn-ghost px-3 py-2">
+        <a href="/settings" className="relative btn-ghost px-3 py-2">
           <Bell size={16}/>
           {unread > 0 && (
             <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-danger text-white text-[10px] font-bold flex items-center justify-center">
