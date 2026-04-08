@@ -160,27 +160,42 @@ export async function handleSendError(accountId, error) {
 
 // ── Умный выбор следующего аккаунта ──────────────────────
 export async function pickBestAccount(accountIds) {
+  // Get all active accounts (warmed or not)
+  const where = {
+    status: 'ACTIVE',
+    sessionData: { not: null },
+  }
+  // If specific account IDs provided, filter by them
+  if (accountIds && accountIds.length > 0) {
+    where.id = { in: accountIds }
+  }
+
   const accounts = await prisma.tgAccount.findMany({
-    where: {
-      id: { in: accountIds },
-      status: 'ACTIVE',
-      isWarmed: true,
-      sessionData: { not: null },
-    },
+    where,
     orderBy: [
       { sentToday: 'asc' },   // Сначала те кто меньше отправил
       { warmupDays: 'desc' },  // Приоритет прогретым
+      { isWarmed: 'desc' },
     ]
   })
 
-  // Фильтруем по лимиту
+  // Filter by effective daily limit
   const available = accounts.filter(a => {
-    const limit = getDailyLimit(a)
+    const limit = getEffectiveDailyLimit(a)
     return a.sentToday < limit
   })
 
   if (!available.length) return null
   return available[0]
+}
+
+// Effective limit - for unwarmed accounts use a conservative limit
+export function getEffectiveDailyLimit(account) {
+  const strict = getDailyLimit(account)
+  if (strict > 0) return strict
+  // Account exists and is ACTIVE but not warmed - allow small limit
+  if (account.status === 'ACTIVE') return account.dailyLimit || 30
+  return 0
 }
 
 // ── Статус здоровья всех аккаунтов ───────────────────────
