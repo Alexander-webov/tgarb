@@ -26,6 +26,9 @@ export default function Accounts() {
   const [proxyOpen,setProxyOpen]= useState(false)
   const [form,     setForm]     = useState({ phone:'', dailyLimit:50, delayMin:20, delayMax:60 })
   const [proxyForm,setProxyForm]= useState({ host:'', port:1080, proxyType:'socks5', username:'', password:'', country:'' })
+  const [accErrors,   setAccErrors]  = useState({})
+  const [checking,    setChecking]   = useState({})
+  const [checkResult, setCheckResult]= useState({})
 
   const handleSpamCheck = async (id) => {
     setChecking(p => ({...p, [id]: true}))
