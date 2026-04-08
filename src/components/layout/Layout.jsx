@@ -27,7 +27,7 @@ const NAV = [
     { href: '/accounts',  icon: Users,    label: 'Аккаунты',  badge: null },
     { href: '/spy',       icon: Search,   label: 'Шпион',     badge: 'New', bc: 'green' },
     { href: '/settings',  icon: Settings,     label: 'Настройки',  badge: null },
-    { href: '/antiban',   icon: ShieldCheck,  label: 'Антибан',    badge: 'New' },
+    { href: '/antiban',   icon: Shield,  label: 'Антибан',    badge: 'New' },
   ]},
 ]
 
