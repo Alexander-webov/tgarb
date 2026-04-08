@@ -20,6 +20,8 @@ export default function Campaigns() {
   const [accounts,  setAccounts]  = useState([])
   const [loading,   setLoading]   = useState(true)
   const [open,      setOpen]      = useState(false)
+  const [expanded,  setExpanded]  = useState({})
+  const [dbLogs,    setDbLogs]    = useState({})
   const [form, setForm] = useState({
     name: '', campaignType: 'DM', messageText: '',
     targetChannels: [], senderAccountIds: [],
@@ -89,6 +91,18 @@ export default function Campaigns() {
     toast.success('Удалено'); load()
   }
 
+  const toggleExpand = async (id) => {
+    const nowOpen = !expanded[id]
+    setExpanded(p => ({...p, [id]: nowOpen}))
+    if (nowOpen) {
+      const res = await fetch(`/api/campaigns/stats?id=${id}`)
+      if (res.ok) {
+        const data = await res.json()
+        setDbLogs(p => ({...p, [id]: data}))
+      }
+    }
+  }
+
   const toggleChannel = (u) => setForm(f => ({
     ...f, targetChannels: f.targetChannels.includes(u)
       ? f.targetChannels.filter(c => c !== u)
@@ -144,6 +158,58 @@ export default function Campaigns() {
                       <button className="btn-ghost text-xs px-3 py-1.5 hover:border-danger hover:text-danger"
                               onClick={() => handleDelete(camp.id)}><Trash2 size={12}/></button>
                     </div>
+                  </div>
+
+                  {/* Logs toggle */}
+                  <div className="mt-3 border-t border-border/50 pt-3">
+                    <button className="text-[11px] font-mono text-muted hover:text-accent flex items-center gap-1"
+                      onClick={() => toggleExpand(camp.id)}>
+                      {expanded[camp.id] ? '▲' : '▼'} Лента отправок
+                      {dbLogs[camp.id]?.recentLog?.length > 0 && (
+                        <span className="ml-1 text-accent">({dbLogs[camp.id].recentLog.length})</span>
+                      )}
+                    </button>
+
+                    {expanded[camp.id] && (
+                      <div className="mt-2 space-y-2">
+                        {/* Stats by account */}
+                        {dbLogs[camp.id]?.byAccount && Object.keys(dbLogs[camp.id].byAccount).length > 0 && (
+                          <div className="flex gap-3 flex-wrap">
+                            {Object.entries(dbLogs[camp.id].byAccount).map(([phone, stat]) => (
+                              <div key={phone} className="text-[11px] font-mono bg-surface2 rounded px-3 py-1.5 flex items-center gap-2">
+                                <span className="text-muted">{phone}</span>
+                                <span className="text-success">✅ {stat.sent}</span>
+                                {stat.failed > 0 && <span className="text-danger">❌ {stat.failed}</span>}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {/* Messages log */}
+                        {dbLogs[camp.id]?.recentLog?.length > 0 ? (
+                          <div className="max-h-48 overflow-y-auto border border-border rounded-lg divide-y divide-border/30">
+                            {dbLogs[camp.id].recentLog.map((log, i) => (
+                              <div key={i} className="flex items-center gap-2 px-3 py-1.5 text-[11px] font-mono hover:bg-surface2">
+                                <span className="text-muted w-16 flex-shrink-0">{new Date(log.time).toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}</span>
+                                {log.delivered
+                                  ? <span className="text-success flex-shrink-0">✅</span>
+                                  : <span className="text-danger flex-shrink-0">❌</span>}
+                                <span className="text-muted flex-shrink-0">{log.account}</span>
+                                {log.delivered
+                                  ? <span className="text-[#e8eaf0]">→ получатель #{String(log.recipientId || '').slice(-6)}</span>
+                                  : <span className="text-danger">{log.error || 'ошибка'}</span>}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-[11px] font-mono text-muted text-center py-4 bg-surface2 rounded-lg">
+                            {camp.status === 'RUNNING' ? '⏳ Воркер начнёт отправку через ~10 сек...'
+                              : camp.status === 'DONE' ? `✅ Завершена. Отправлено: ${camp.sentCount}, ошибок: ${camp.failedCount}`
+                              : camp.status === 'PAUSED' ? '⏸ На паузе'
+                              : '▶️ Запусти рассылку чтобы увидеть лог'}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               )

@@ -27,6 +27,27 @@ export default function Accounts() {
   const [form,     setForm]     = useState({ phone:'', dailyLimit:50, delayMin:20, delayMax:60 })
   const [proxyForm,setProxyForm]= useState({ host:'', port:1080, proxyType:'socks5', username:'', password:'', country:'' })
 
+  const handleSpamCheck = async (id) => {
+    setChecking(p => ({...p, [id]: true}))
+    toast.loading('Проверяем SpamBot...', { id: `sc-${id}` })
+    const res = await fetch('/api/accounts/spamcheck', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ accountIds: [id] })
+    })
+    const data = await res.json()
+    toast.dismiss(`sc-${id}`)
+    setChecking(p => ({...p, [id]: false}))
+    const r = data.results?.[0]
+    if (r) {
+      setCheckResult(p => ({...p, [id]: r}))
+      if (r.status === 'clean') toast.success(`✅ ${r.phone}: Без спамблока`)
+      else if (r.status === 'limited') toast.error(`⚠️ Ограничен SpamBot`, { duration: 8000 })
+      else if (r.status === 'banned') toast.error(`🚫 Забанен!`, { duration: 8000 })
+      else toast.error(r.detail || 'Ошибка', { duration: 6000 })
+    }
+    load()
+  }
+
   const load = async () => {
     setLoading(true)
     const [a, p] = await Promise.all([
@@ -138,7 +159,10 @@ export default function Accounts() {
                         onChange={e => e.target.files[0] && handleUpload(acc.id, e.target.files[0])}/>
                       <span className="btn-ghost text-xs px-3 py-1.5 cursor-pointer"><Upload size={13}/> Session</span>
                     </label>
-                    <button className="btn-ghost text-xs px-3 py-1.5" onClick={() => handleConnect(acc.id)}><Wifi size={13}/></button>
+                    <button className="btn-ghost text-xs px-3 py-1.5" onClick={() => handleConnect(acc.id)} title="Подключить"><Wifi size={13}/></button>
+                    <button className="btn-ghost text-xs px-3 py-1.5" onClick={() => handleSpamCheck(acc.id)} disabled={checking[acc.id]} title="Проверить SpamBot">
+                      {checking[acc.id] ? '⏳' : '🛡'}
+                    </button>
                     <button className="btn-ghost text-xs px-3 py-1.5 hover:border-danger hover:text-danger" onClick={() => handleDelete(acc.id)}><Trash2 size={13}/></button>
                   </div>
                   {/* Proxy selector */}
