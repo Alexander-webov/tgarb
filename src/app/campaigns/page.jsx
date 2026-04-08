@@ -1,18 +1,17 @@
 'use client'
-import { useEffect, useState, useCallback } from 'react'
-import { Plus, Play, Pause, Trash2, Send, Users, CheckCircle2, XCircle, Clock, ChevronDown, ChevronUp, Info } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Plus, Play, Pause, Trash2, Send } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Layout, Topbar } from '@/components/layout/Layout'
-import { Modal, FormField, Badge, ProgressBar, Spinner, Empty, useWebSocket } from '@/components/ui'
-import { checkAccount } from '@/lib/accountCheck'
+import { Modal, FormField, Badge, ProgressBar, Spinner, Empty } from '@/components/ui'
 
 const STATUS = {
-  DRAFT:     { label: 'Черновик',   color: 'purple', hint: 'Кампания создана, но ещё не запущена' },
-  RUNNING:   { label: 'Идёт',       color: 'blue',   hint: 'Воркер активно отправляет сообщения' },
-  PAUSED:    { label: 'Пауза',      color: 'yellow', hint: 'Рассылка приостановлена' },
-  DONE:      { label: 'Завершена',  color: 'green',  hint: 'Все сообщения отправлены' },
-  FAILED:    { label: 'Ошибка',     color: 'red',    hint: 'Произошла ошибка при отправке' },
-  SCHEDULED: { label: 'Запланир.',  color: 'yellow', hint: 'Запуск запланирован' },
+  DRAFT:     { label: 'Черновик',  color: 'purple' },
+  RUNNING:   { label: 'Идёт',      color: 'blue'   },
+  PAUSED:    { label: 'Пауза',     color: 'yellow' },
+  DONE:      { label: 'Готово',    color: 'green'  },
+  FAILED:    { label: 'Ошибка',    color: 'red'    },
+  SCHEDULED: { label: 'Запланир.', color: 'yellow' },
 }
 
 export default function Campaigns() {
@@ -21,79 +20,73 @@ export default function Campaigns() {
   const [accounts,  setAccounts]  = useState([])
   const [loading,   setLoading]   = useState(true)
   const [open,      setOpen]      = useState(false)
-  const [expanded,  setExpanded]  = useState({})
-  const [liveLogs,  setLiveLogs]  = useState({})
   const [form, setForm] = useState({
     name: '', campaignType: 'DM', messageText: '',
     targetChannels: [], senderAccountIds: [],
     maxRecipients: '', delayBetween: 30, offerUrl: '',
   })
 
-  useWebSocket({ onEvent: useCallback((ev, data) => {
-    if (ev === 'campaign_progress') {
-      setCampaigns(prev => prev.map(c =>
-        c.id === data.campaignId ? { ...c, ...data } : c
-      ))
-      setLiveLogs(prev => ({
-        ...prev,
-        [data.campaignId]: [
-          { time: new Date().toLocaleTimeString('ru'), ...data },
-          ...(prev[data.campaignId] || []).slice(0, 49)
-        ]
-      }))
-    }
-  }, []) })
-
-  const load = async (showLoading = true) => {
-    if (showLoading) setLoading(true)
+  const load = async () => {
+    setLoading(true)
     const [c, ch, ac] = await Promise.all([
       fetch('/api/campaigns').then(r => r.json()).catch(() => []),
       fetch('/api/channels').then(r => r.json()).catch(() => []),
       fetch('/api/accounts').then(r => r.json()).catch(() => []),
     ])
-    setCampaigns(Array.isArray(c) ? c : [])
-    setChannels(Array.isArray(ch) ? ch : [])
-    setAccounts(Array.isArray(ac) ? ac : [])
-    setLoading(false)
+    setCampaigns(c); setChannels(ch); setAccounts(ac); setLoading(false)
   }
-
   useEffect(() => { load() }, [])
-  useEffect(() => {
-    const t = setInterval(() => load(false), 5000)
-    return () => clearInterval(t)
-  }, [])
 
   const handleCreate = async () => {
     if (!form.name || !form.messageText) { toast.error('Заполни название и текст'); return }
-    if (form.targetChannels.length === 0) { toast.error('Выбери хотя бы один канал-источник'); return }
     const res = await fetch('/api/campaigns', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...form, maxRecipients: form.maxRecipients ? +form.maxRecipients : null }),
     })
     if (res.ok) { toast.success('Кампания создана'); setOpen(false); load() }
-    else toast.error('Ошибка при создании')
+    else toast.error('Ошибка')
   }
 
   const handleStart = async (id) => {
-    const check = checkAccount(accounts)
-    if (!check.ok) { toast.error(check.error); return }
-    await fetch(`/api/campaigns/${id}/start`, { method: 'POST' })
-    toast.success('Рассылка запущена! Воркер начнёт отправку в течение 10 сек.')
-    setTimeout(() => load(false), 2000)
-  }
+    // Pre-check: are there any active non-banned accounts?
+    const camp = campaigns.find(c => c.id === id)
+    const campAccIds = camp?.accounts?.map(a => a.account?.id) || []
+    const activeAccounts = accounts.filter(a => a.status === 'ACTIVE')
+    const bannedAccounts = accounts.filter(a => a.status === 'BANNED')
 
+    // Check if campaign accounts are all banned
+    if (campAccIds.length > 0) {
+      const campActive = campAccIds.filter(aid => accounts.find(a => a.id === aid && a.status === 'ACTIVE'))
+      if (campActive.length === 0) {
+        const bannedPhones = campAccIds.map(aid => accounts.find(a => a.id === aid)?.phone).filter(Boolean).join(', ')
+        toast.error(`Все аккаунты рассылки забанены или неактивны: ${bannedPhones}. Добавь активный аккаунт.`, { duration: 8000 })
+        return
+      }
+    } else if (activeAccounts.length === 0) {
+      const bannedMsg = bannedAccounts.length > 0 
+        ? `Аккаунты ${bannedAccounts.map(a=>a.phone).join(', ')} забанены.` 
+        : ''
+      toast.error(`Нет активных аккаунтов для рассылки. ${bannedMsg} Добавь рабочий аккаунт.`, { duration: 8000 })
+      return
+    }
+
+    const res = await fetch(`/api/campaigns/${id}/start`, { method: 'POST' })
+    const data = await res.json()
+    if (res.ok) {
+      toast.success('Рассылка запущена! Воркер начнёт отправку через ~10 сек.')
+    } else {
+      toast.error(data.error || 'Ошибка запуска', { duration: 8000 })
+    }
+    load()
+  }
   const handlePause = async (id) => {
     await fetch(`/api/campaigns/${id}/pause`, { method: 'POST' })
-    toast('Поставлено на паузу')
-    load(false)
+    toast('На паузе'); load()
   }
-
   const handleDelete = async (id) => {
-    if (!confirm('Удалить кампанию?')) return
     await fetch(`/api/campaigns/${id}`, { method: 'DELETE' })
-    toast.success('Удалено')
-    load()
+    toast.success('Удалено'); load()
   }
 
   const toggleChannel = (u) => setForm(f => ({
@@ -102,266 +95,146 @@ export default function Campaigns() {
       : [...f.targetChannels, u]
   }))
 
-  const [dbLogs, setDbLogs] = useState({})
-
-  const toggleExpand = async (id) => {
-    const nowOpen = !expanded[id]
-    setExpanded(p => ({ ...p, [id]: nowOpen }))
-    if (nowOpen) {
-      // Load real stats from DB
-      const res = await fetch(`/api/campaigns/stats?id=${id}`)
-      if (res.ok) {
-        const data = await res.json()
-        setDbLogs(p => ({ ...p, [id]: data }))
-      }
-    }
-  }
-
   return (
     <Layout>
-      <Topbar title="Рассылки"
-        subtitle={`${campaigns.filter(c => c.status === 'RUNNING').length} активных · ${campaigns.filter(c => c.status === 'DONE').length} завершено`}
+      <Topbar title="Рассылки" subtitle={`${campaigns.filter(c=>c.status==='RUNNING').length} активных`}
         actions={<button className="btn-primary" onClick={() => setOpen(true)}><Plus size={14}/> Новая рассылка</button>}/>
-
-      <div className="p-8 space-y-4">
-
-        {/* Инструкция */}
-        <div className="bg-accent/5 border border-accent/20 rounded-xl p-4 flex gap-3">
-          <Info size={16} className="text-accent mt-0.5 flex-shrink-0"/>
-          <div className="text-xs text-muted leading-relaxed">
-            <span className="text-[#e8eaf0] font-bold">Как работают рассылки:</span> сначала нужно добавить каналы во вкладке «Каналы» и спарсить участников (кнопка ↓). После этого создай рассылку, выбери каналы-источники и запусти. Воркер будет отправлять сообщения участникам с заданной задержкой. Статус обновляется каждые 5 секунд.
-          </div>
-        </div>
-
+      <div className="p-8">
         {loading ? (
           <div className="flex justify-center py-16"><Spinner/></div>
         ) : campaigns.length === 0 ? (
-          <div className="card">
-            <Empty icon={Send} text="Рассылок нет"
-              action={<button className="btn-primary" onClick={() => setOpen(true)}><Plus size={14}/> Создать первую</button>}/>
-          </div>
+          <div className="card"><Empty icon={Send} text="Рассылок нет"
+            action={<button className="btn-primary" onClick={() => setOpen(true)}><Plus size={14}/> Создать</button>}/></div>
         ) : (
-          campaigns.map(camp => {
-            const st = STATUS[camp.status] || STATUS.DRAFT
-            const pct = camp.maxRecipients ? Math.round((camp.sentCount || 0) / camp.maxRecipients * 100) : 0
-            const logs = liveLogs[camp.id] || []
-            const isExpanded = expanded[camp.id]
-
-            return (
-              <div key={camp.id} className="card overflow-hidden">
-                <div className="p-5">
+          <div className="space-y-3">
+            {campaigns.map(camp => {
+              const st = STATUS[camp.status] || STATUS.DRAFT
+              return (
+                <div key={camp.id} className="card p-5 hover:border-accent/20 transition-colors">
                   <div className="flex items-start gap-4">
-                    <div className="flex-1 min-w-0">
-
-                      {/* Заголовок */}
-                      <div className="flex items-center gap-3 mb-1">
-                        <span className="font-bold text-sm">{camp.name}</span>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        <span className="font-bold">{camp.name}</span>
                         <Badge color={st.color}>{st.label}</Badge>
-                        <span className="text-[10px] font-mono text-muted bg-surface2 px-2 py-0.5 rounded">{camp.campaignType}</span>
+                        <span className="text-xs font-mono text-muted">{camp.campaignType}</span>
                       </div>
-
-                      {/* Текст сообщения */}
-                      <p className="text-xs text-muted mb-3 line-clamp-2 bg-surface2 rounded px-3 py-2 font-mono">
-                        {camp.messageText || '—'}
-                      </p>
-
-                      {/* Статистика */}
-                      <div className="grid grid-cols-4 gap-3 mb-3">
-                        <div className="bg-surface2 rounded-lg px-3 py-2 text-center">
-                          <div className="text-lg font-black text-[#e8eaf0]">{camp.sentCount || 0}</div>
-                          <div className="text-[10px] font-mono text-muted uppercase">Отправлено</div>
-                        </div>
-                        <div className="bg-surface2 rounded-lg px-3 py-2 text-center">
-                          <div className="text-lg font-black text-success">{camp.deliveredCount || 0}</div>
-                          <div className="text-[10px] font-mono text-muted uppercase">Доставлено</div>
-                        </div>
-                        <div className="bg-surface2 rounded-lg px-3 py-2 text-center">
-                          <div className="text-lg font-black text-danger">{camp.failedCount || 0}</div>
-                          <div className="text-[10px] font-mono text-muted uppercase">Ошибок</div>
-                        </div>
-                        <div className="bg-surface2 rounded-lg px-3 py-2 text-center">
-                          <div className="text-lg font-black text-accent">{camp.maxRecipients || '∞'}</div>
-                          <div className="text-[10px] font-mono text-muted uppercase">Лимит</div>
-                        </div>
-                      </div>
-
-                      {/* Прогресс */}
-                      {camp.status === 'RUNNING' && camp.maxRecipients && (
-                        <div className="mb-3">
-                          <div className="flex justify-between text-[10px] font-mono text-muted mb-1">
-                            <span>Прогресс отправки</span>
-                            <span>{camp.sentCount || 0} / {camp.maxRecipients} ({pct}%)</span>
-                          </div>
-                          <ProgressBar value={camp.sentCount || 0} max={camp.maxRecipients} color="#00e5ff"/>
+                      <p className="text-xs text-muted mb-3 line-clamp-1">{camp.messageText}</p>
+                      {camp.sentCount > 0 && (
+                        <div className="flex gap-4 text-xs font-mono">
+                          <span className="text-muted">Отправлено: <span className="text-[#e8eaf0]">{camp.sentCount}</span></span>
+                          <span className="text-muted">Доставлено: <span className="text-success">{camp.deliveredCount}</span></span>
+                          <span className="text-muted">Ошибок: <span className="text-danger">{camp.failedCount}</span></span>
                         </div>
                       )}
-
-                      {/* Каналы и аккаунты */}
-                      <div className="flex gap-4 text-[10px] font-mono text-muted">
-                        {camp.targetChannels?.length > 0 && (
-                          <span>📡 Источники: {camp.targetChannels.slice(0,3).map(c => `@${c}`).join(', ')}{camp.targetChannels.length > 3 ? ` +${camp.targetChannels.length - 3}` : ''}</span>
-                        )}
-                        <span>⏱ Задержка: {camp.delayBetween}с</span>
-                      </div>
+                      {camp.status === 'RUNNING' && (
+                        <ProgressBar value={camp.deliveredCount} max={camp.maxRecipients || 100} color="#00e5ff" className="mt-3"/>
+                      )}
                     </div>
-
-                    {/* Кнопки */}
-                    <div className="flex flex-col gap-2 flex-shrink-0">
+                    <div className="flex gap-2 flex-shrink-0">
                       {(camp.status === 'DRAFT' || camp.status === 'PAUSED') && (
-                        <button className="btn-primary text-xs px-4 py-2" onClick={() => handleStart(camp.id)}>
+                        <button className="btn-primary text-xs px-3 py-1.5" onClick={() => handleStart(camp.id)}>
                           <Play size={12}/> Запустить
                         </button>
                       )}
                       {camp.status === 'RUNNING' && (
-                        <button className="btn-ghost text-xs px-4 py-2" onClick={() => handlePause(camp.id)}>
+                        <button className="btn-ghost text-xs px-3 py-1.5" onClick={() => handlePause(camp.id)}>
                           <Pause size={12}/> Пауза
                         </button>
                       )}
-                      <button className="btn-ghost text-xs px-4 py-2 hover:border-danger hover:text-danger"
-                        onClick={() => handleDelete(camp.id)}>
-                        <Trash2 size={12}/> Удалить
-                      </button>
-                      <button className="btn-ghost text-xs px-4 py-2" onClick={() => toggleExpand(camp.id)}>
-                        {isExpanded ? <ChevronUp size={12}/> : <ChevronDown size={12}/>}
-                        Логи
-                      </button>
+                      <button className="btn-ghost text-xs px-3 py-1.5 hover:border-danger hover:text-danger"
+                              onClick={() => handleDelete(camp.id)}><Trash2 size={12}/></button>
                     </div>
                   </div>
                 </div>
-
-                {/* Живой лог */}
-                {isExpanded && (
-                  <div className="border-t border-border bg-[#0a0b0f] p-4">
-                    <div className="text-[10px] font-mono text-muted uppercase tracking-widest mb-3 flex items-center gap-2">
-                      <div className={`w-1.5 h-1.5 rounded-full ${camp.status === 'RUNNING' ? 'bg-success animate-pulse' : 'bg-muted'}`}/>
-                      Лог отправки
-                      {camp.status === 'RUNNING' && <span className="text-success">● Обновляется автоматически</span>}
-                    </div>
-                    {/* Stats by account */}
-                    {dbLogs[camp.id]?.byAccount && Object.keys(dbLogs[camp.id].byAccount).length > 0 && (
-                      <div className="mb-3">
-                        <div className="text-[10px] font-mono text-muted uppercase mb-2">Статистика по аккаунтам:</div>
-                        <div className="space-y-1">
-                          {Object.entries(dbLogs[camp.id].byAccount).map(([phone, stat]) => (
-                            <div key={phone} className="flex items-center gap-3 text-[11px] font-mono bg-surface rounded px-3 py-1.5">
-                              <span className="text-muted">{phone}</span>
-                              <span className="text-success">✅ {stat.sent}</span>
-                              {stat.failed > 0 && <span className="text-danger">❌ {stat.failed}</span>}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {/* Recent log */}
-                    {(logs.length > 0 || dbLogs[camp.id]?.recentLog?.length > 0) ? (
-                      <div className="space-y-1 max-h-48 overflow-y-auto">
-                        {(dbLogs[camp.id]?.recentLog || []).map((log, i) => (
-                          <div key={i} className="flex items-center gap-3 text-[11px] font-mono">
-                            <span className="text-muted">{new Date(log.time).toLocaleTimeString('ru')}</span>
-                            {log.delivered ? <CheckCircle2 size={11} className="text-success"/> : <XCircle size={11} className="text-danger"/>}
-                            <span className="text-muted">{log.account}</span>
-                            {log.error && <span className="text-danger">{log.error}</span>}
-                          </div>
-                        ))}
-                        {logs.map((log, i) => (
-                          <div key={`live-${i}`} className="flex items-center gap-3 text-[11px] font-mono">
-                            <span className="text-muted">{log.time}</span>
-                            {log.status === 'sent' && <CheckCircle2 size={11} className="text-success"/>}
-                            {log.status === 'failed' && <XCircle size={11} className="text-danger"/>}
-                            <span className={log.status === 'sent' ? 'text-success' : 'text-danger'}>
-                              {log.message}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="text-xs font-mono text-muted text-center py-4">
-                        {camp.status === 'RUNNING'
-                          ? '⏳ Ожидаем первые события от воркера...'
-                          : camp.status === 'DRAFT'
-                          ? '▶️ Запусти рассылку чтобы увидеть логи'
-                          : 'Нет данных'}
-                      </div>
-                    )}
-                    <div className="mt-3 pt-3 border-t border-border/50 text-[10px] font-mono text-muted">
-                      💡 Логи в реальном времени приходят через WebSocket. Исторические логи хранятся в БД.
-                    </div>
-                  </div>
-                )}
-              </div>
-            )
-          })
+              )
+            })}
+          </div>
         )}
       </div>
 
       <Modal open={open} onClose={() => setOpen(false)} title="Новая рассылка" wide>
-        <div className="text-xs text-muted bg-surface2 rounded-lg px-3 py-2 mb-4 flex gap-2">
-          <Info size={13} className="flex-shrink-0 mt-0.5"/>
-          Убедись что у тебя есть активный аккаунт и спарсенные каналы. Без участников в БД рассылка не отправит ни одного сообщения.
-        </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <FormField label="Название кампании">
+            <FormField label="Название">
               <input className="input" placeholder="Крипта оффер #1" value={form.name}
-                onChange={e => setForm({...form, name: e.target.value})}/>
+                     onChange={e => setForm({...form, name: e.target.value})}/>
             </FormField>
-            <FormField label="Тип рассылки">
+            <FormField label="Тип">
               <select className="input" value={form.campaignType} onChange={e => setForm({...form, campaignType: e.target.value})}>
-                <option value="DM">💬 Личные сообщения (DM)</option>
-                <option value="COMMENT">💭 Комментарии к постам</option>
-                <option value="INVITE">👥 Инвайтинг в группу</option>
-                <option value="POST">📢 Постинг в канал</option>
+                <option value="DM">💬 Личные сообщения</option>
+                <option value="COMMENT">💭 Комментарии</option>
+                <option value="INVITE">👥 Инвайтинг</option>
+                <option value="POST">📢 Постинг</option>
               </select>
             </FormField>
             <FormField label="Текст сообщения">
-              <textarea className="input resize-none h-28" placeholder="Привет! Хочу предложить..." value={form.messageText}
-                onChange={e => setForm({...form, messageText: e.target.value})}/>
-              <div className="text-[10px] font-mono text-muted mt-1">{form.messageText.length} символов</div>
+              <textarea className="input resize-none h-28" placeholder="Текст..." value={form.messageText}
+                        onChange={e => setForm({...form, messageText: e.target.value})}/>
             </FormField>
-            <FormField label="URL оффера (необязательно)">
+            <FormField label="URL оффера">
               <input className="input" placeholder="https://..." value={form.offerUrl}
-                onChange={e => setForm({...form, offerUrl: e.target.value})}/>
+                     onChange={e => setForm({...form, offerUrl: e.target.value})}/>
             </FormField>
           </div>
           <div>
-            <FormField label={`Каналы-источники участников (${form.targetChannels.length} выбрано)`}>
-              {channels.length === 0 ? (
-                <div className="text-xs text-danger bg-danger/10 border border-danger/20 rounded-lg p-3">
-                  ⚠️ Нет каналов! Сначала добавь каналы во вкладке «Каналы» и спарси участников.
-                </div>
-              ) : (
-                <div className="border border-border rounded-lg max-h-44 overflow-y-auto divide-y divide-border">
-                  {channels.map(ch => (
-                    <label key={ch.id} className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-surface2">
-                      <input type="checkbox" className="accent-accent"
-                        checked={form.targetChannels.includes(ch.username)}
-                        onChange={() => toggleChannel(ch.username)}/>
-                      <span className="text-xs font-mono">@{ch.username}</span>
-                      {ch.subscribers && <span className="text-[10px] text-muted ml-auto">{(ch.subscribers/1000).toFixed(0)}K</span>}
-                      {ch.parsedCount > 0 && <span className="text-[10px] text-success">{ch.parsedCount} польз.</span>}
+            <FormField label={`Каналы-источники (${form.targetChannels.length})`}>
+              <div className="border border-border rounded-lg max-h-40 overflow-y-auto divide-y divide-border">
+                {channels.slice(0,20).map(ch => (
+                  <label key={ch.id} className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-surface2">
+                    <input type="checkbox" className="accent-accent"
+                           checked={form.targetChannels.includes(ch.username)}
+                           onChange={() => toggleChannel(ch.username)}/>
+                    <span className="text-xs font-mono">@{ch.username}</span>
+                    {ch.subscribers && <span className="text-[10px] text-muted ml-auto">{(ch.subscribers/1000).toFixed(0)}K</span>}
+                  </label>
+                ))}
+              </div>
+            </FormField>
+            <FormField label={`Аккаунты для рассылки (${form.senderAccountIds.length > 0 ? form.senderAccountIds.length + ' выбрано' : 'авто-ротация'})`}>
+              <div className="border border-border rounded-lg divide-y divide-border max-h-40 overflow-y-auto">
+                <label className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-surface2 bg-surface2/50">
+                  <input type="checkbox" className="accent-accent"
+                    checked={form.senderAccountIds.length === 0}
+                    onChange={() => setForm({...form, senderAccountIds: []})}/>
+                  <span className="text-xs font-mono text-accent">🔄 Авто-ротация (все активные)</span>
+                </label>
+                {accounts.map(a => {
+                  const isBanned = a.status === 'BANNED'
+                  const isActive = a.status === 'ACTIVE'
+                  return (
+                    <label key={a.id} className={`flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-surface2 ${isBanned ? 'opacity-40' : ''}`}>
+                      <input type="checkbox" className="accent-accent" disabled={isBanned}
+                        checked={form.senderAccountIds.includes(a.id)}
+                        onChange={() => setForm(f => ({
+                          ...f,
+                          senderAccountIds: f.senderAccountIds.includes(a.id)
+                            ? f.senderAccountIds.filter(x => x !== a.id)
+                            : [...f.senderAccountIds, a.id]
+                        }))}/>
+                      <span className="text-xs font-mono">{a.phone}</span>
+                      {a.username && <span className="text-[10px] text-muted">@{a.username}</span>}
+                      <span className={`text-[10px] ml-auto px-1.5 py-0.5 rounded font-mono
+                        ${isActive ? 'text-success bg-success/10' : isBanned ? 'text-danger bg-danger/10' : 'text-yellow-400 bg-yellow-400/10'}`}>
+                        {isActive ? '✅ Активен' : isBanned ? '🚫 Забанен' : a.status}
+                      </span>
                     </label>
-                  ))}
+                  )
+                })}
+              </div>
+              {form.senderAccountIds.length === 0 && (
+                <div className="text-[10px] font-mono text-muted mt-1">
+                  Авто-ротация: система выберет лучший доступный аккаунт автоматически
                 </div>
               )}
-            </FormField>
-            <FormField label="Аккаунт-отправитель">
-              <select className="input" value={form.senderAccountIds[0] || ''}
-                onChange={e => setForm({...form, senderAccountIds: e.target.value ? [+e.target.value] : []})}>
-                <option value="">Авто (ротация всех активных)</option>
-                {accounts.filter(a => a.status === 'ACTIVE').map(a => (
-                  <option key={a.id} value={a.id}>{a.username ? `@${a.username}` : a.phone} — {a.sentToday}/{a.dailyLimit}/д</option>
-                ))}
-              </select>
             </FormField>
             <div className="grid grid-cols-2 gap-3">
               <FormField label="Макс. получателей">
                 <input className="input" type="number" placeholder="Все" value={form.maxRecipients}
-                  onChange={e => setForm({...form, maxRecipients: e.target.value})}/>
+                       onChange={e => setForm({...form, maxRecipients: e.target.value})}/>
               </FormField>
-              <FormField label="Задержка сек.">
+              <FormField label="Задержка (сек)">
                 <input className="input" type="number" value={form.delayBetween}
-                  onChange={e => setForm({...form, delayBetween: +e.target.value})}/>
-                <div className="text-[10px] font-mono text-muted mt-1">Рекомендуем 20-60с</div>
+                       onChange={e => setForm({...form, delayBetween: +e.target.value})}/>
               </FormField>
             </div>
           </div>
